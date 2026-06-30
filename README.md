@@ -6,7 +6,7 @@
 
 It *listens* to the band and the room, and gently *nudges* the console within hard guardrails. The console is always the source of truth, every move is logged and reversible, and **a human can take over instantly**. Runs and is fully testable **with no hardware at all**.
 
-[Try it in 60 seconds](#-try-it-in-60-seconds) · [Requirements](#-requirements) · [Setup (PC & Mac)](#-setup) · [Operating it](#-operating-it) · [X32‑Edit / M32‑Edit](#-x32-edit--m32-edit) · [How it works](#-how-it-works)
+[Try it in 60 seconds](#-try-it-in-60-seconds) · [Requirements](#-requirements) · [Setup (PC & Mac)](#setup) · [Operating it](#operating-it) · [X32‑Edit / M32‑Edit](#x32-edit) · [How it works](#-how-it-works)
 
 ![Trio Mix-Assistant dashboard](docs/screenshots/dashboard.png)
 
@@ -61,7 +61,7 @@ python3 run.py
 
 Then open **http://127.0.0.1:8770/** — toggle the jobs and watch the behaviour change.
 
-> Prefer no terminal? See **[Setup](#-setup)** for the double‑click installers (`setup.bat` / `setup.command`).
+> Prefer no terminal? See **[Setup](#setup)** for the double‑click installers (`setup.bat` / `setup.command`).
 
 ## 📋 Requirements
 
@@ -87,7 +87,9 @@ The app has three modes; each needs different things. **Simulation needs almost 
 | **Tablet** | — | Optional | Optional — iPad / Android for a wireless dashboard |
 | **AbleSet** | — | — | Optional — automatic scene recall from the setlist |
 
-> 💡 **Don't have the console yet?** Use **Emulation** — it runs the *exact* production code against a built‑in M32C emulator over real network sockets. You can plug in a USB mic and run a real pink‑noise room calibration and feedback test. See [Operating it](#-operating-it).
+> 💡 **Don't have the console yet?** Use **Emulation** — it runs the *exact* production code against a built‑in M32C emulator over real network sockets. You can plug in a USB mic and run a real pink‑noise room calibration and feedback test. See [Operating it](#operating-it).
+
+<a id="setup"></a>
 
 ## 🛠️ Setup
 
@@ -110,6 +112,8 @@ The app has three modes; each needs different things. **Simulation needs almost 
 
 > 🧪 **No hardware?** Double‑click **`rehearse.bat`** (Windows) / `bash rehearse.command` (macOS) to run the whole app against the built‑in emulator.
 > 📡 **Offline install:** on a same‑OS machine with internet, run `fetch-wheels` to fill a `wheels/` folder, copy the folder over, then `setup` installs with no internet.
+
+<a id="operating-it"></a>
 
 ## 🎚️ Operating it
 
@@ -137,6 +141,8 @@ Helpful flags: `--list-devices` (find audio inputs), `--lan` (serve to tablets +
 ### On a tablet (iPad / Android)
 Run with `--lan --https`, then on the tablet (same WiFi) scan the printed **QR code**, accept the certificate warning once, and **Add to Home Screen** for a full‑screen app. On Windows, click **Allow** on the first‑run Firewall prompt (Private network).
 
+<a id="x32-edit"></a>
+
 ## 🎛️ X32‑Edit / M32‑Edit
 
 The **M32C has no faders or screen of its own** — it's a stage box, controlled entirely from a computer/tablet. **X32‑Edit** (Behringer) and **M32‑Edit** (Midas) are the free official editor apps for the X32/M32 family; you'll want one installed for full console control alongside this assistant.
@@ -159,6 +165,10 @@ This project's emulator answers X32‑Edit's discovery handshake, so you can **c
 3. Watch the assistant's moves mirror live on the editor. To push test moves yourself: `python osc_demo.py --animate`.
 
 This also lets you **validate the OSC** against Behringer's own software with no gear — set a fader to a known dB and confirm the editor shows the same value. (The fader law is already verified this way.)
+
+**Real X32‑Edit mirroring the app live** — connected to *MixAssist* (IP 192.168.1.12) over the emulator. The channel faders and the muted **Ch 06** are exactly what the assistant pushed:
+
+![X32-Edit mirroring the Trio Mix-Assistant live](docs/screenshots/x32edit-usage.png)
 
 ## 🧠 How it works
 
@@ -210,6 +220,6 @@ python -m unittest discover -s tests
 
 ## 📄 License & disclaimer
 
-[MIT](LICENSE) © 2026 Andrew Craton.
+[MIT](LICENSE) © 2026 spinoza1791.
 
 Not affiliated with or endorsed by Music Tribe, Behringer, or Midas. *X32‑Edit*, *M32‑Edit*, *X32*, and *M32* are trademarks of their respective owners — download their software only from the official links above. **OSC scalings vary across firmware; validate against your console before trusting it live** (see [HARDWARE_BRINGUP.md](app/HARDWARE_BRINGUP.md)).
