@@ -235,11 +235,11 @@ python -m unittest discover -s tests
 
 ## 📄 Authors
 
-**Eric Craton** · **Chris Beulow**
+**Eric Craton** · **Chris Buelow**
 
 ## 📄 License & disclaimer
 
-**Proprietary — © 2026 Eric Craton and Chris Beulow. All rights reserved.**
+**Proprietary — © 2026 Eric Craton and Chris Buelow. All rights reserved.**
 This software is private and **not licensed for use, copying, modification, or distribution**. No rights are granted without the owners' prior written consent — see **[LICENSE](LICENSE)**.
 
 Not affiliated with or endorsed by Music Tribe, Behringer, or Midas. *X32‑Edit*, *M32‑Edit*, *X32*, and *M32* are trademarks of their respective owners — download their software only from the official links above. **OSC scalings vary across firmware; validate against your console before trusting it live** (see [HARDWARE_BRINGUP.md](app/HARDWARE_BRINGUP.md)).
