@@ -111,6 +111,7 @@ The app has three modes; each needs different things. **Simulation needs almost 
    - The first run, macOS asks for **Microphone** and **Network** permission — **allow both** (System Settings → Privacy & Security → Microphone), or capture stays silent.
 
 > 🧪 **No hardware?** Double‑click **`rehearse.bat`** (Windows) / `bash rehearse.command` (macOS) to run the whole app against the built‑in emulator.
+> 📱 **Use a tablet?** Keep `LAN=yes`/`HTTPS=yes` in `show.conf` (the defaults); the start window prints a **scan‑to‑open QR code** — see [Operating it → On a tablet](#operating-it) for the connect example.
 > 📡 **Offline install:** on a same‑OS machine with internet, run `fetch-wheels` to fill a `wheels/` folder, copy the folder over, then `setup` installs with no internet.
 
 <a id="operating-it"></a>
@@ -138,8 +139,18 @@ Helpful flags: `--list-devices` (find audio inputs), `--lan` (serve to tablets +
 - **TAKEOVER** — mutes the main and holds all jobs so a human always wins.
 - **Deep links** — `…:8770/#eq`, `#fx`, `#settings` open straight to a tab (handy on a tablet).
 
-### On a tablet (iPad / Android)
-Run with `--lan --https`, then on the tablet (same WiFi) scan the printed **QR code**, accept the certificate warning once, and **Add to Home Screen** for a full‑screen app. On Windows, click **Allow** on the first‑run Firewall prompt (Private network).
+### 📱 On a tablet (iPad / Android) — scan to connect
+
+Run with `--lan --https`. At startup the terminal prints the dashboard's **LAN URL and a scan‑to‑open QR code** — point the tablet camera at it:
+
+<img src="docs/screenshots/tablet-qr.png" width="170" align="right" alt="Example connect QR for https://192.168.1.50:8770/">
+
+1. **FOH laptop:** `python run.py --emulate --lan --https` (or your production command). The start window prints the URL + QR (this is what `--lan` does; `--https` enables the PWA + wake‑lock).
+2. **Tablet:** join the **same WiFi** as the laptop.
+3. **Scan the QR** in the terminal with the tablet camera — or open the printed `https://<laptop‑ip>:8770/` URL.
+4. Accept the **self‑signed certificate** warning once, then **Add to Home Screen** for a full‑screen app.
+
+The QR at right is an *example* (`https://192.168.1.50:8770/`); yours encodes the laptop's real LAN IP. On Windows, click **Allow** on the first‑run **Firewall** prompt (the laptop must be on a *Private* network). Over plain `http` (no `--https`), Wake Lock no‑ops — set the tablet's auto‑lock to *Never* instead.
 
 <a id="x32-edit"></a>
 
@@ -218,8 +229,12 @@ cd app
 python -m unittest discover -s tests
 ```
 
+## 📄 Authors
+
+**Eric Craton** · **Chris Beulow**
+
 ## 📄 License & disclaimer
 
-[MIT](LICENSE) © 2026 spinoza1791.
+[MIT](LICENSE) © 2026 Eric Craton and Chris Beulow.
 
 Not affiliated with or endorsed by Music Tribe, Behringer, or Midas. *X32‑Edit*, *M32‑Edit*, *X32*, and *M32* are trademarks of their respective owners — download their software only from the official links above. **OSC scalings vary across firmware; validate against your console before trusting it live** (see [HARDWARE_BRINGUP.md](app/HARDWARE_BRINGUP.md)).
