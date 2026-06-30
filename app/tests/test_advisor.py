@@ -41,7 +41,7 @@ class TestSessionLog(unittest.TestCase):
     def test_venue_history(self):
         sl = SessionLog(":memory:")
         try:
-            s1 = sl.start_session(venue="Barn", template="Trio")
+            sl.start_session(venue="Barn", template="Trio")
             sl.log_event({"kind": "feedback", "msg": "a"})
             sl.flush()
             sl.start_session(venue="Barn", template="Trio")    # second show, same venue

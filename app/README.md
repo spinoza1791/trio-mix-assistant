@@ -162,12 +162,12 @@ button mutes the main and holds all jobs so a human always wins.
 ## Architecture
 
 ```
-SimStage / JACK ─▶ dsp.analyse_block ─▶ MixAssistant ─▶ guardrails ─▶ Console(OSC)
-   (audio in)        (features)          (4 jobs)        (clamp)       (control out)
-                                              │
-        engine telemetry ◀────────────────────┘
-                │  (SSE @ 10 Hz)
-            server.py ──▶ static/index.html  (the dashboard)
+SimCapture / SoundDevice ─▶ dsp.analyse_block ─▶ MixAssistant ─▶ guardrails ─▶ Console(OSC)
+      (audio in)               (features)          (4 jobs)        (clamp)       (control out)
+                                                       │
+              engine telemetry ◀───────────────────────┘
+                      │  (WebSocket / SSE)
+                  server.py ──▶ static/index.html  (the dashboard)
 ```
 
 | Module | Responsibility |

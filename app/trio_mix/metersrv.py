@@ -61,7 +61,6 @@ class MeterReceiver:
         self.ip, self.port = ip, port
         self.server = None
         self._running = False
-        self.latest_meters: list[float] = []
 
     # -- OSC handlers (called by python-osc as handler(address, *args)) ------
     def handle_meters(self, address, *args) -> None:
@@ -69,7 +68,6 @@ class MeterReceiver:
             return
         if args and isinstance(args[0], (bytes, bytearray)):
             vals = decode_meter_blob(bytes(args[0]))
-            self.latest_meters = vals
             if self.on_meters:
                 self.on_meters(vals)
 

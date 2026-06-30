@@ -126,7 +126,6 @@ class TestRides(unittest.TestCase):
         # enable + drive an off-target level -> a move happens
         a.enabled["balance"] = True
         now = 0.0
-        moved = False
         start = a.fader_db[5]
         for _ in range(10):
             a.on_features(5, feat(rms=-28.0), now=now)   # 8 dB low

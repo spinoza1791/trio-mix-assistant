@@ -17,7 +17,6 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from trio_mix import config as C
 from trio_mix.metersrv import decode_meter_blob, encode_meter_blob
 from trio_mix.osc import SimConsole, db_to_fader, fader_to_db
 

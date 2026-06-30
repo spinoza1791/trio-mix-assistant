@@ -89,8 +89,9 @@ class ConsoleBase:
     def _send(self, addr: str, *args) -> None:
         raise NotImplementedError
 
-    def _record(self, kind: str, **semantic) -> None:
-        """Optional semantic mirror for sim/tests. No-op by default."""
+    def _record(self, kind: str, **_semantic) -> None:
+        """Optional semantic mirror for sim/tests. No-op by default; subclasses
+        (e.g. SimConsole) override this to record the keyword fields."""
 
     def close(self) -> None:
         """Release transport resources; stop the ramp worker if it was started."""

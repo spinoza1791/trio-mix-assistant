@@ -147,8 +147,8 @@ def main() -> None:
         print(f"  Channel map: {len(C.CHANNELS)} channels from template "
               f"'{show_template.name}'")
 
-    auto_info = None                     # --auto: open ranked devices for real, keep the
-    auto_source = None                   # first that actually streams audio (no pre-verify)
+    auto_source = None                   # --auto: open ranked devices for real, keep the
+                                         # first that actually streams audio (no pre-verify)
     if args.auto:
         from trio_mix import config as C
         from trio_mix.capture import autodetect_inputs, SoundDeviceCapture
@@ -168,7 +168,7 @@ def main() -> None:
                 except Exception: pass
                 continue
             if s._auto_db is not None:                 # it actually delivered audio
-                auto_info, auto_source = cand, s
+                auto_source = s
                 print(f"  Auto input: [{cand['index']}] {cand['name']} ({cand['hostapi']}, "
                       f"{cand['channels']} ch) — mic {s._auto_db:.0f} dBFS, +{s.gain_db:.0f} dB")
                 break
@@ -338,7 +338,7 @@ def main() -> None:
         print(f"  Tablet (iPad / Galaxy Tab S7): open  {tablet_url}  then Add to Home Screen")
         alts = [a for a in _all_lan_ips() if a != ip]
         if alts:                       # VPN / multiple NICs — the tablet may be on another
-            print(f"  If that's unreachable, try: " +
+            print("  If that's unreachable, try: " +
                   ", ".join(f"{scheme}://{a}:{args.port}/" for a in alts))
         if scheme == "https":
             print("  (self-signed: accept the certificate warning once on the tablet)")

@@ -480,12 +480,6 @@ def autodetect_inputs(prefer_sr: int = C.SAMPLE_RATE):     # pragma: no cover - 
         return []
 
 
-def autodetect_input(prefer_sr: int = C.SAMPLE_RATE):      # pragma: no cover - needs hw
-    """The single best-ranked input device (no open/verify), or None."""
-    r = autodetect_inputs(prefer_sr)
-    return r[0] if r else None
-
-
 def list_audio_devices() -> str:                           # pragma: no cover - needs hw
     """Human-readable list of input audio devices (for --list-devices)."""
     try:
