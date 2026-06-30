@@ -172,8 +172,12 @@ The **M32C has no faders or screen of its own** — it's a stage box, controlled
 This project's emulator answers X32‑Edit's discovery handshake, so you can **connect the real editor to your laptop** and watch the assistant drive a genuine console GUI:
 
 1. `python run.py --emulate --lan` — it prints `X32-Edit: connect it to <your-ip>:10023`.
-2. In X32‑Edit, connect to that IP (or `127.0.0.1` on the same PC). It discovers **“MixAssist”** and transfers channels.
-3. Watch the assistant's moves mirror live on the editor. To push test moves yourself: `python osc_demo.py --animate`.
+2. In X32‑Edit, open **Setup → Connection**: the emulated desk appears as **MixAssist** (model X32) in the mixer list — select it and click **Connect** (or enter the IP under *Manual IP*).
+3. It transfers the channels, then the assistant's moves mirror live on the editor. To push test moves yourself: `python osc_demo.py --animate`.
+
+**X32‑Edit's Setup → Connection dialog** — the emulator (*MixAssist*, 192.168.1.12) shows up in the mixer list; select it and **Connect**:
+
+![X32-Edit Setup / Connection dialog discovering MixAssist](docs/screenshots/x32edit-setup.png)
 
 This also lets you **validate the OSC** against Behringer's own software with no gear — set a fader to a known dB and confirm the editor shows the same value. (The fader law is already verified this way.)
 
@@ -235,6 +239,7 @@ python -m unittest discover -s tests
 
 ## 📄 License & disclaimer
 
-[MIT](LICENSE) © 2026 Eric Craton and Chris Beulow.
+**Proprietary — © 2026 Eric Craton and Chris Beulow. All rights reserved.**
+This software is private and **not licensed for use, copying, modification, or distribution**. No rights are granted without the owners' prior written consent — see **[LICENSE](LICENSE)**.
 
 Not affiliated with or endorsed by Music Tribe, Behringer, or Midas. *X32‑Edit*, *M32‑Edit*, *X32*, and *M32* are trademarks of their respective owners — download their software only from the official links above. **OSC scalings vary across firmware; validate against your console before trusting it live** (see [HARDWARE_BRINGUP.md](app/HARDWARE_BRINGUP.md)).
