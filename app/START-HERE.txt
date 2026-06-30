@@ -1,0 +1,74 @@
+============================================================
+  TRIO MIX-ASSISTANT  -  QUICK START
+============================================================
+
+WHAT THIS IS
+  A live-sound safety-net + dashboard for our M32C. It listens and gently
+  nudges the desk within hard limits. The console is always the source of
+  truth and a human can take over instantly.
+
+WHAT YOU NEED
+  - This folder (copy it to the FOH laptop, or run it from the shared drive).
+  - Python 3.10 or newer:  https://www.python.org/downloads/
+    (Windows: tick "Add Python to PATH" during install.)
+  - Internet ONCE, for the install step (see OFFLINE note at the bottom).
+
+------------------------------------------------------------
+  WINDOWS
+------------------------------------------------------------
+  1. Double-click   setup.bat        (one time - builds a local environment)
+  2. Double-click   list-devices.bat (note the audio device number)
+  3. Open           show.conf        in Notepad - set CONSOLE_IP and AUDIO_DEVICE
+  4. Double-click   start.bat        (the dashboard opens in your browser)
+
+------------------------------------------------------------
+  MAC
+------------------------------------------------------------
+  Open Terminal, drag this folder onto it (or 'cd' into it), then:
+  1.  bash setup.command         (one time)
+  2.  bash list-devices.command  (note the audio device number)
+  3.  open show.conf             - set CONSOLE_IP and AUDIO_DEVICE, save
+  4.  bash start.command
+  The first run, macOS asks for MICROPHONE and NETWORK permission - allow both
+  (System Settings > Privacy & Security > Microphone), or capture stays silent.
+
+------------------------------------------------------------
+  TABLET (iPad / Android)
+------------------------------------------------------------
+  With LAN=yes in show.conf, the start window prints a URL and a QR code.
+  Scan it on the tablet, accept the certificate warning once (HTTPS=yes),
+  then "Add to Home Screen" for a full-screen app.
+
+------------------------------------------------------------
+  NO HARDWARE YET? TRY IT RISK-FREE
+------------------------------------------------------------
+  Windows:  double-click  rehearse.bat
+  Mac:      bash rehearse.command
+  This runs the WHOLE app against a built-in simulated console.
+
+------------------------------------------------------------
+  WATCH IT IN X32-EDIT / M32-EDIT (no console needed)
+------------------------------------------------------------
+  Start the app with   python run.py --emulate --lan   then open X32-Edit and
+  connect it to THIS PC (it appears at your LAN IP, or type 127.0.0.1). It mirrors
+  the app live - the assistant's moves show on the real editor GUI.
+
+  To SEE faders move, three options (run in a second terminal, app still running):
+    1.  python osc_demo.py --animate     continuous fader wave (works with --auto)
+    2.  python osc_demo.py               one-shot: known dB + mute + EQ notch
+    3.  python run.py --emulate --lan    (no --auto) the desk nudges a fader every
+                                         ~12s + song changes move the lead fader
+  osc_demo.py also drives a REAL desk:  python osc_demo.py --ip <console-ip>
+  Add --trace-osc to run.py to log every address the editor asks for.
+
+------------------------------------------------------------
+  MORE
+------------------------------------------------------------
+  RUNBOOK.md          - full show-day guide (both OSes)
+  HARDWARE_BRINGUP.md - one-time OSC validation against the real console
+                        (do this the first time before trusting it live)
+
+  OFFLINE install: on a same-OS machine WITH internet, run fetch-wheels
+  (.bat/.command) to fill a wheels/ folder, copy the whole folder over,
+  then setup installs with no internet.
+============================================================

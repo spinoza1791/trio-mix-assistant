@@ -1,0 +1,13 @@
+{
+  "name": "Bench — single mic",
+  "channels": {
+    "map": { "1": "meas_mic" },
+    "meas_mic": 1,
+    "balance": [],
+    "guest": [],
+    "stereo_links": []
+  },
+  "songs": [
+    { "name": "Calibration test", "scene": 1 }
+  ]
+}

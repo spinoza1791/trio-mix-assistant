@@ -1,0 +1,51 @@
+{
+  "name": "AutoFOH Pilot (13-input)",
+  "channels": {
+    "map": {
+      "1": "lead_vox",
+      "2": "harm_vox",
+      "3": "guest_vox",
+      "4": "gtr_l",
+      "5": "gtr_r",
+      "6": "keys_l",
+      "7": "keys_r",
+      "8": "guest_inst_l",
+      "9": "guest_inst_r",
+      "10": "ableton_l",
+      "11": "ableton_r",
+      "12": "loop_l",
+      "13": "loop_r",
+      "14": "meas_mic",
+      "15": "stage_mic"
+    },
+    "labels": {
+      "lead_vox": "Lead vocal",
+      "harm_vox": "Harmony vox",
+      "guest_vox": "Guest vox",
+      "gtr_l": "Guitar L",
+      "gtr_r": "Guitar R",
+      "keys_l": "Keys L",
+      "keys_r": "Keys R",
+      "guest_inst_l": "Guest inst L",
+      "guest_inst_r": "Guest inst R",
+      "ableton_l": "Ableton L",
+      "ableton_r": "Ableton R",
+      "loop_l": "Loop L",
+      "loop_r": "Loop R",
+      "meas_mic": "FOH meas mic",
+      "stage_mic": "Stage ambient"
+    },
+    "lead": 1,
+    "meas_mic": 14,
+    "stage_mic": 15,
+    "balance": [6, 7],
+    "guest": [3, 8, 9],
+    "stereo_links": [[4, 5], [6, 7], [8, 9], [10, 11], [12, 13]]
+  },
+  "songs": [
+    {"name": "Opener",     "scene": 1, "lead_target": -6.0},
+    {"name": "Ballad",     "scene": 2, "lead_target": -7.0, "balance": {"6": -22.0, "7": -22.0}},
+    {"name": "Guest Duet", "scene": 3, "lead_target": -5.5, "guest": true},
+    {"name": "Closer",     "scene": 4, "lead_target": -6.0}
+  ]
+}

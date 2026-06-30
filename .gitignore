@@ -1,0 +1,38 @@
+# --- Python ---
+**/__pycache__/
+*.py[cod]
+.venv/
+**/.venv/
+venv/
+env/
+wheels/
+*.egg-info/
+
+# --- Build artifacts (regenerate with app/package.py) ---
+/dist/
+
+# --- Runtime / generated ---
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+**/sessions.db
+**/venues/
+**/.tls/
+*.pem
+*.log
+
+# --- Proprietary binaries & third-party docs (we LINK to these, never redistribute) ---
+*.exe
+*.pdf
+
+# --- Internal design source kept at repo root (a published copy lives in docs/) ---
+/mix-assistant-design.html
+/notes.md
+
+# --- OS / editors ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp

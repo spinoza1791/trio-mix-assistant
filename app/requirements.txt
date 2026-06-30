@@ -1,0 +1,18 @@
+# Runtime
+numpy>=1.24
+
+# Real-hardware mode only (simulation + dashboard + tests need only numpy + stdlib)
+python-osc>=1.8    ; extra == "hardware"   # OSC control + meter/fader reconciliation
+sounddevice>=0.4   ; extra == "hardware"   # the listening half (PortAudio multichannel capture)
+
+# Optional niceties
+qrcode      # prints a scan-to-open QR of the tablet URL at startup (graceful if absent)
+cryptography  # only for --https self-signed certs (falls back to the openssl CLI)
+
+# AI advisory layer (--advisor): NO package needed — it calls the Anthropic
+# Messages API via stdlib urllib; just set ANTHROPIC_API_KEY. Session logging
+# uses stdlib sqlite3. Both degrade gracefully when absent/disabled.
+
+# Note: the dashboard server, SSE/WebSocket, show clock, session log, and the whole
+# test suite use only the Python standard library + numpy. Install python-osc +
+# sounddevice when driving a real M32C; AbleSet scene recall needs python-osc.
