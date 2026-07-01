@@ -798,18 +798,27 @@ class Engine:
                                      "calibration needs a measurement-mic input — " + msg)
                 self._rebuild_telemetry()
                 return
-            used = self.calibrator.apply(
-                res, log=lambda m: self.assistant._emit("calibration", m))
             self.calib = res
-            self.assistant.set_calibration(res)
-            self.assistant.cal_bus_bands = used          # feedback notching avoids these
-            # apply() flattened the whole bus, so any prior feedback notches are
-            # gone — reset the feedback-band tracking to match.
-            self.assistant.fb_bus_bands = []
-            self.assistant.used_bus_notch_band = 0
-            self.assistant._emit("calibration",
-                                 f"done — {len(res.corrections)} room cut(s), "
-                                 f"{len(res.watch_freqs)} feedback-prone freq(s) on watch-list")
+            self.assistant.set_calibration(res)          # watch-list is detection state, not console
+            if self.assistant.coach_mode:
+                # Coach mode: measure the room but ADVISE the main-bus EQ instead of
+                # writing it — coach mode's promise is that the console is untouched.
+                self.assistant.coach_calibration(self.calibrator.plan(res))
+                self.assistant._emit("calibration",
+                                     f"coach: measured room — {len(res.corrections)} cut(s), "
+                                     f"{len(res.watch_freqs)} watch freq(s); advising manual "
+                                     "main-bus EQ (console untouched)")
+            else:
+                used = self.calibrator.apply(
+                    res, log=lambda m: self.assistant._emit("calibration", m))
+                self.assistant.cal_bus_bands = used      # feedback notching avoids these
+                # apply() flattened the whole bus, so any prior feedback notches are
+                # gone — reset the feedback-band tracking to match.
+                self.assistant.fb_bus_bands = []
+                self.assistant.used_bus_notch_band = 0
+                self.assistant._emit("calibration",
+                                     f"done — {len(res.corrections)} room cut(s), "
+                                     f"{len(res.watch_freqs)} feedback-prone freq(s) on watch-list")
             self.calib_status = "done"
             if self.status == "calibrating":
                 self.status = "live"

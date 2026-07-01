@@ -107,34 +107,56 @@ class MixAssistant:
                    "coach mode ON — advising manual moves (console untouched)"
                    if on else "coach mode off")
 
-    def _recommend(self, kind: str, ch: int | None, text: str, **meta) -> None:
+    def _recommend(self, kind: str, ch: int | None, text: str,
+                   persist: bool = False, **meta) -> None:
         """Record/refresh a standing manual-move recommendation (keyed by kind+ch)
         and log it once per distinct instruction, so a persistent problem doesn't
-        spam the decision log."""
+        spam the decision log. `persist` recs are one-shot advice (e.g. a room
+        calibration) that must NOT time out — they stay until coach is toggled off
+        or the recommendation is re-issued."""
         self._coach_seq += 1
         key = (kind, ch)
         self.coach_recs[key] = {"seq": self._coach_seq, "mono": time.monotonic(),
-                                "time": time.strftime("%H:%M:%S"), "kind": kind,
-                                "ch": ch, "role": C.CHANNELS.get(ch), "text": text, **meta}
+                                "persist": persist, "time": time.strftime("%H:%M:%S"),
+                                "kind": kind, "ch": ch, "role": C.CHANNELS.get(ch),
+                                "text": text, **meta}
         if self._coach_last_text.get(key) != text:
             self._coach_last_text[key] = text
             self._emit("coach", text, ch)
 
     def coach_snapshot(self, now: float | None = None) -> list[dict]:
-        """Current recommendations, freshest first, dropping any that haven't been
-        re-issued within COACH_TTL_S (the problem cleared, or the engineer fixed
-        it) — also purges them so they don't linger in state."""
+        """Current recommendations, freshest first, dropping any non-persistent rec
+        that hasn't been re-issued within COACH_TTL_S (the problem cleared, or the
+        engineer fixed it) — also purges them so they don't linger in state."""
         now = time.monotonic() if now is None else now
         live = []
         for key in list(self.coach_recs):
             rec = self.coach_recs[key]
-            if now - rec["mono"] > C.COACH_TTL_S:
+            if not rec.get("persist") and now - rec["mono"] > C.COACH_TTL_S:
                 del self.coach_recs[key]
                 self._coach_last_text.pop(key, None)
             else:
                 live.append(rec)
         live.sort(key=lambda r: r["seq"], reverse=True)
         return live
+
+    def coach_calibration(self, steps: list[dict]) -> None:
+        """Turn a calibration plan (from Calibrator.plan) into one standing manual
+        recommendation: the main-bus PEQ to dial in by hand. Persistent, so it
+        stays up while the engineer applies it. In coach mode the console is never
+        written — this replaces the automatic apply()."""
+        if not steps:
+            self._recommend("calibration", None,
+                            "Room measured — no problem peaks; leave the main bus flat.",
+                            persist=True, steps=[])
+            return
+        parts = [f"band {s['band']} {s['hz']:.0f} Hz {s['gain']:+.1f} dB (Q {s['q']:.0f})"
+                 + ("" if s["kind"] == "room" else " pre-dip") for s in steps]
+        text = "Room calibration → set MAIN-BUS PEQ: " + "; ".join(parts) + "."
+        self._recommend("calibration", None, text, persist=True,
+                        steps=[{"band": s["band"], "hz": round(s["hz"], 1),
+                                "gain": s["gain"], "q": s["q"], "kind": s["kind"]}
+                               for s in steps])
 
     def _note_latency(self, kind: str) -> None:
         """Record detect→actuate latency: from when this block's analysis began

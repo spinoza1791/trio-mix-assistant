@@ -7,14 +7,16 @@ manual move. No LLM/AI. These tests pin that:
 """
 import os
 import sys
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from trio_mix import config as C
 from trio_mix.assistant import MixAssistant
+from trio_mix.calibration import Calibrator
 from trio_mix.dsp import ChannelFeatures
-from trio_mix.engine import Engine
+from trio_mix.engine import Engine, sim_room_capture
 from trio_mix.osc import SimConsole
 
 
@@ -118,6 +120,61 @@ class TestCoachStateAndSnapshot(unittest.TestCase):
         snap = a.coach_snapshot()
         self.assertEqual(snap[0]["kind"], "feedback")        # most recent first
         self.assertEqual({r["kind"] for r in snap}, {"clip", "feedback"})
+
+
+class TestCoachCalibration(unittest.TestCase):
+    def test_plan_matches_apply_bands(self):
+        # The plan() the coach advises is the exact same bands apply() writes.
+        con = SimConsole(); cal = Calibrator(con)
+        res = cal.analyze(sim_room_capture())
+        steps = cal.plan(res)
+        self.assertTrue(steps)
+        used = cal.apply(res, log=lambda *_: None)
+        self.assertEqual({s["band"] for s in steps}, used)
+        for s in steps:                                     # every advised step was written
+            self.assertAlmostEqual(con.bus_eq[s["band"]]["hz"], s["hz"], places=1)
+
+    def test_coach_calibration_recommends_main_bus_peq(self):
+        con = SimConsole(); a = MixAssistant(con)
+        a.set_coach_mode(True)
+        cal = Calibrator(con)
+        a.coach_calibration(cal.plan(cal.analyze(sim_room_capture())))
+        rec = a.coach_recs.get(("calibration", None))
+        self.assertIsNotNone(rec)
+        self.assertIn("MAIN-BUS PEQ", rec["text"])
+        self.assertTrue(rec["persist"])
+        self.assertTrue(rec["steps"])
+
+    def test_calibration_rec_does_not_expire(self):
+        con = SimConsole(); a = MixAssistant(con)
+        a.set_coach_mode(True)
+        a.coach_calibration([{"band": 1, "hz": 250.0, "gain": -6.0, "q": 3.0, "kind": "room"}])
+        rec = a.coach_recs[("calibration", None)]
+        # long past the live-rec TTL, the persistent calibration advice survives
+        snap = a.coach_snapshot(now=rec["mono"] + C.COACH_TTL_S + 100.0)
+        self.assertEqual(len(snap), 1)
+        self.assertEqual(snap[0]["kind"], "calibration")
+
+    def test_engine_coach_calibration_advises_not_applies(self):
+        e = Engine(sim=True)
+        e.set_coach_mode(True)
+        e.run_calibration()                                 # spawns a worker (sleeps ~1.2 s)
+        deadline = time.time() + 5.0
+        while e.calib_status != "done" and time.time() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(e.calib_status, "done")
+        self.assertEqual(len(e.con.bus_eq), 0)              # console NOT written in coach mode
+        self.assertTrue(any(r["kind"] == "calibration" for r in e.assistant.coach_snapshot()))
+
+    def test_engine_auto_calibration_still_applies(self):
+        e = Engine(sim=True)                                # coach OFF (default)
+        e.run_calibration()
+        deadline = time.time() + 5.0
+        while e.calib_status != "done" and time.time() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(e.calib_status, "done")
+        self.assertGreater(len(e.con.bus_eq), 0)            # bus EQ written as before
+        self.assertEqual(e.assistant.coach_recs, {})
 
 
 class TestCoachEngineWiring(unittest.TestCase):
