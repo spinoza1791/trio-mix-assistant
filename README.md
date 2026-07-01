@@ -20,6 +20,7 @@ Small acoustic acts often play with **no one at front‑of‑house**. This app i
 
 - **Deterministic real‑time core — no AI in the audio path.** Feedback/clip/level decisions are plain DSP and clamped controllers, so behaviour is predictable. (An *optional* Claude "slow layer" can post plain‑language advice — **advisory only, it never touches the mix**.)
 - **Console stays in charge.** Move a fader on the desk or a tablet and the app yields. One **TAKEOVER** button hands everything back to a human.
+- **Coach mode — you mix, it guides.** One toggle flips the app from *acting* to *advising*: it suspends **every** automatic move and instead tells you the exact manual change to make (channel, band, dB, Hz, even which scene to recall). Still zero AI — same deterministic math — just surfaced as instructions instead of applied. For hands‑on engineers, teaching, or previewing what it *would* do.
 - **Runs with zero hardware.** A built‑in simulator and a protocol‑faithful console **emulator** let you learn, demo, and rehearse the whole rig on a laptop — and even drive **real X32‑Edit** from it (see below).
 - **One dashboard, any screen.** A single installable web app (PWA) works identically on the FOH laptop, an iPad, or an Android tablet over WiFi.
 
@@ -136,6 +137,7 @@ Helpful flags: `--list-devices` (find audio inputs), `--lan` (serve to tablets +
 - **MIXING SURFACE** — drag faders, tap **M** to mute; a human move makes auto‑ride yield on that channel.
 - **Pink‑noise calibration** (Settings → *Run calibration*) — measures the room, parks gentle cuts on the worst peaks, and builds a feedback watch‑list. The result shows as an octave‑band chart with ▲ watch / ▼ cut chips.
 - **Scenes** — recall console scenes; with a show template they recall automatically per song.
+- **COACH** — flip the assistant from *acting* to *advising*: it stops touching the console and lists every move it would make (feedback notch, clip trim, vocal ride, calibration, even scene recall) as a plain manual instruction in a **Coach — manual moves** panel + the log, for you to dial in by hand. Only your own manual moves act.
 - **TAKEOVER** — mutes the main and holds all jobs so a human always wins.
 - **Deep links** — `…:8770/#eq`, `#fx`, `#settings` open straight to a tab (handy on a tablet).
 
@@ -202,7 +204,9 @@ This also lets you **validate the OSC** against Behringer's own software with no
 | **Balance hold** | advisory | Snapshot the bass/keys balance and hold it from wandering. |
 | **Pink‑noise calibration** | pre‑show | Measure the room, cut the worst peaks, pre‑dip feedback‑prone freqs, seed the watch‑list. |
 
-Everything passes hard **guardrails** (fader/gain range, max step, smooth ramp); every move is **logged and reversible**. **221 automated tests** cover the OSC scaling, detection logic, the decision loops, the HTTP/WebSocket server, the hardware capture path, and a real‑socket round‑trip against the emulator.
+**Coach mode** turns this inside‑out: instead of acting, the app *advises*. One toggle suspends **every** automatic move — all the jobs above **plus** setlist scene recall and guest mutes — and surfaces the exact manual change to make (channel, band, dB, Hz, scene) in a Coach panel and the decision log. Same deterministic math, still zero AI, and the console is left untouched; only your own manual moves act. Use it to mix by hand with guidance, or to preview what the app would do before you trust a job.
+
+Everything passes hard **guardrails** (fader/gain range, max step, smooth ramp); every move is **logged and reversible**. **259 automated tests** cover the OSC scaling, detection logic, the decision loops (auto *and* coach), the HTTP/WebSocket server, the hardware capture path, and a real‑socket round‑trip against the emulator.
 
 ## 📂 Project layout
 
@@ -214,7 +218,7 @@ trio-mix-assistant/
 │   ├── osc_demo.py           ← push moves so X32-Edit mirrors the app
 │   ├── trio_mix/             ← package: dsp, osc, assistant, engine, server…
 │   ├── static/index.html     ← the single-file dashboard (no build step)
-│   ├── tests/                ← 221 unit + integration tests
+│   ├── tests/                ← 259 unit + integration tests
 │   ├── setup/start/list-devices/rehearse  (.bat + .command)
 │   ├── README.md             ← developer docs (architecture, internals)
 │   ├── RUNBOOK.md            ← show-day guide (Windows & macOS)
