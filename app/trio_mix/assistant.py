@@ -82,6 +82,12 @@ class MixAssistant:
         self.last_phase_act: dict[tuple, float] = {}     # pair -> last auto-flip time
         self.last_phase_warn: dict[tuple, float] = {}    # pair -> last advisory time
 
+        # vocal-unmask ducking (dynamic EQ sidechained to the lead vocal)
+        self.duck_gain = 0.0             # current shared duck depth (dB, <= 0)
+        self.duck_applied: dict[int, float] = {}   # ch -> last duck gain written
+        self.vox_level_ema: float | None = None    # smoothed lead-vocal level (sidechain)
+        self.last_unmask_log = -1e9
+
         # calibration products
         self.set_calibration(calib)
         self.venue_watch_freqs: list = []      # venue-learned freqs (persist across recal)
@@ -110,7 +116,9 @@ class MixAssistant:
         if on == self.coach_mode:
             return
         self.coach_mode = on
-        if not on:
+        if on:
+            self.release_unmask()          # a live duck must stop when we switch to advising
+        else:
             self.coach_recs.clear()
             self._coach_last_text.clear()
         self._emit("system",
@@ -249,6 +257,8 @@ class MixAssistant:
                         self._note_latency("feedback")
                 else:
                     band = (self.used_notch_band[ch] % 4) + 1
+                    if self.enabled.get("unmask") and band == C.UNMASK_BAND:
+                        band = (band % 4) + 1     # leave the reserved duck band alone
                     if self.coach_mode:
                         self._recommend("feedback", ch,
                             f"Feedback {feat.fb_freq:.0f} Hz on {C.CHANNELS[ch]} → notch "
@@ -497,6 +507,56 @@ class MixAssistant:
         else:
             self._clear_phase(key)
 
+    # ======================================================================
+    # Vocal-unmask ducking — when the lead vocal is present, dip each instrument's
+    # 2-5 kHz (masking) band a few dB so the vocal cuts through, then release when
+    # it pauses. Auto mode drives the band dynamically; coach mode advises a static
+    # dip (a live duck can't be done by hand).
+    # ======================================================================
+    def _unmask_targets(self) -> tuple:
+        if C.UNMASK_CHANNELS:
+            return tuple(c for c in C.UNMASK_CHANNELS if c in C.CHANNELS)
+        exclude = {C.LEAD_VOCAL_CH, C.MEAS_MIC_CH, C.STAGE_MIC_CH}
+        return tuple(c for c in C.CHANNELS if c not in exclude)
+
+    def release_unmask(self) -> None:
+        """Flatten the duck band on every ducked channel (job off / coach / takeover).
+        Keeps the channel EQ engaged; just returns the reserved band to 0 dB."""
+        for ch in list(self.duck_applied):
+            self.con.set_eq_band(ch, C.UNMASK_BAND, C.UNMASK_FREQ, 0.0, C.UNMASK_Q, on=True)
+        self.duck_applied.clear()
+        self.duck_gain = 0.0
+
+    def handle_unmask(self, vox_feat, now: float) -> None:
+        if not self.enabled.get("unmask"):
+            return
+        a = 1 / 6.0
+        self.vox_level_ema = (vox_feat.rms_dbfs if self.vox_level_ema is None
+                              else (1 - a) * self.vox_level_ema + a * vox_feat.rms_dbfs)
+        targets = self._unmask_targets()
+        if self.coach_mode:
+            # a dynamic duck can't be ridden by hand -> advise a static dip instead
+            roles = ", ".join(C.CHANNELS.get(c, f"ch{c}") for c in targets)
+            self._recommend("unmask", C.LEAD_VOCAL_CH,
+                f"To unmask the vocal: dip ~{C.UNMASK_FREQ:.0f} Hz by "
+                f"{abs(C.UNMASK_DEPTH_DB):.0f} dB (Q {C.UNMASK_Q:.1f}) on {roles} while the "
+                f"vocal is up.", persist=True, freq=round(C.UNMASK_FREQ),
+                depth_db=C.UNMASK_DEPTH_DB, channels=list(targets))
+            return
+        present = self.vox_level_ema > C.UNMASK_VOX_GATE_DB
+        target = C.UNMASK_DEPTH_DB if present else 0.0
+        coef = C.UNMASK_ATTACK if target < self.duck_gain else C.UNMASK_RELEASE   # fast duck, slow release
+        self.duck_gain = (1 - coef) * self.duck_gain + coef * target
+        for ch in targets:
+            if abs(self.duck_gain - self.duck_applied.get(ch, 0.0)) >= C.UNMASK_WRITE_EPS:
+                g = round(self.duck_gain, 1)
+                self.con.set_eq_band(ch, C.UNMASK_BAND, C.UNMASK_FREQ, g, C.UNMASK_Q, on=True)
+                self.duck_applied[ch] = self.duck_gain
+        if present and self.duck_gain < -1.0 and now - self.last_unmask_log > 10.0:
+            self.last_unmask_log = now
+            self._emit("unmask", f"vocal up → ducking {C.UNMASK_FREQ:.0f} Hz "
+                                 f"{self.duck_gain:+.1f} dB on {len(targets)} instrument(s)")
+
     # -- main dispatch ------------------------------------------------------
     @staticmethod
     def _room_conf(level_db: float, contrast_db: float) -> float:
@@ -533,6 +593,7 @@ class MixAssistant:
         self.handle_clip(ch, feat, now)
         if ch == C.LEAD_VOCAL_CH:
             self.handle_vocal_ride(feat, now)
+            self.handle_unmask(feat, now)          # duck instruments to unmask the vocal
         if ch in C.BALANCE_CHANNELS:
             self.handle_balance(ch, feat, now)
 

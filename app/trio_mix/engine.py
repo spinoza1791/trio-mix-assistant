@@ -348,6 +348,8 @@ class Engine:
             self.assistant.enabled[job] = bool(on)
             if job == "balance" and on:
                 self.assistant.capture_balance(self._output_levels())
+            if job == "unmask" and not on:
+                self.assistant.release_unmask()          # flatten the duck band when disabled
             self.assistant._emit("system", f"{job} {'ENABLED' if on else 'disabled'}")
             self._rebuild_telemetry()
 
@@ -741,6 +743,7 @@ class Engine:
                 self._enabled_backup = dict(self.assistant.enabled)
                 for k in self.assistant.enabled:
                     self.assistant.enabled[k] = False
+                self.assistant.release_unmask()          # drop any live duck under takeover
                 self.con.set_main_mute(True)
                 self.status = "takeover"
                 self.assistant._emit("panic", "TAKEOVER — main muted, all jobs held")
@@ -985,6 +988,10 @@ class Engine:
                       "pairs": list(self.assistant.phase_status.values()),
                       "polarity": {c: self.assistant.polarity.get(c, False)
                                    for c in C.CHANNELS}},
+            "unmask": {"enabled": self.assistant.enabled.get("unmask", False),
+                       "duck_db": round(self.assistant.duck_gain, 1),
+                       "freq": round(C.UNMASK_FREQ),
+                       "channels": list(self.assistant._unmask_targets())},
             "main_muted": getattr(self.con, "main_muted", False),
             "master": {"fader": round(self.master_db, 1)},
             "eq": {c: [{"band": b, "hz": round(bd["hz"]), "gain": round(bd["gain"], 1),

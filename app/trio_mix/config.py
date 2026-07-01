@@ -186,6 +186,18 @@ PHASE_SUSTAIN = 8            # sustained inverted blocks before an auto-flip (~1
 PHASE_ACT_COOLDOWN = 5.0     # min seconds between auto-flips on a pair
 PHASE_WARN_INTERVAL = 20.0   # min seconds between repeated phase advisories per pair
 
+# ---- Vocal-unmask ducking (dynamic EQ, sidechained to the lead vocal) ------
+UNMASK_CHANNELS = ()         # instruments to duck; empty -> every mix ch except the
+                             # lead vocal, meas mic, and stage mic
+UNMASK_BAND = 4              # the channel PEQ band the duck drives (reserved from notches)
+UNMASK_FREQ = 3000.0         # masking centre freq — where vocal intelligibility lives (Hz)
+UNMASK_Q = 1.2               # duck bandwidth (moderately wide)
+UNMASK_DEPTH_DB = -4.0       # deepest cut applied while the vocal is present
+UNMASK_VOX_GATE_DB = -38.0   # smoothed vocal RMS above this = "vocal present"
+UNMASK_ATTACK = 0.30         # per-block smoothing when ducking harder (fast, ~tens of ms)
+UNMASK_RELEASE = 0.04        # per-block smoothing when releasing (slow, ~hundreds of ms)
+UNMASK_WRITE_EPS = 0.3       # only re-send a band when the duck gain moved this many dB
+
 # ---- Coach (advisory) mode ------------------------------------------------
 COACH_TTL_S = 8.0            # a standing manual-move recommendation expires this
                             # long after it was last re-issued (problem cleared)
@@ -197,4 +209,5 @@ DEFAULT_ENABLED = {
     "vocal_ride": False,
     "balance": False,
     "phase": False,          # polarity/comb check + auto-flip (needs PHASE_PAIRS)
+    "unmask": False,         # duck instruments' mid-highs when the vocal is present
 }
