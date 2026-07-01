@@ -30,6 +30,9 @@ wheels/
 /mix-assistant-design.html
 /notes.md
 
+# --- Local QA clone of this repo (nested checkout; never commit) ---
+/trio-mix-assistant-qa/
+
 # --- Secrets / credentials (NEVER commit) ---
 spinoza1791-pat.md
 *-pat.md
