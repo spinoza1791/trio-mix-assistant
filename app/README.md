@@ -25,9 +25,10 @@ Beyond the safety net it implements the AutoFOH show-side features:
 - **detect→actuate latency** + **room-mic SNR confidence** instrumentation.
 
 See the repo **[README](../README.md)** (overview, screenshots, setup), the
-**[design infographic](../docs/mix-assistant-design.html)**, **`RUNBOOK.md`**
-(show-day guide, Windows & macOS) and **`HARDWARE_BRINGUP.md`** (one-time
-OSC-validation checklist).
+**[design infographic](../docs/mix-assistant-design.html)**, **`HARDWARE_SETUP.md`**
+(optimal listening rig + system requirements — what to buy & how to wire it),
+**`RUNBOOK.md`** (show-day guide, Windows & macOS) and **`HARDWARE_BRINGUP.md`**
+(one-time OSC-validation checklist).
 
 ![Dashboard](../docs/screenshots/dashboard-full.png)
 
@@ -154,6 +155,7 @@ over `wss://` automatically under https.
 | **Balance hold** | advisory | Snapshot the bass/keys balance and hold it from wandering. |
 | **Pink-noise calibration** | pre-show | Measure the room, cut the worst peaks, pre-dip feedback-prone freqs, build the baseline + watch-list. |
 | **Manual mixing surface** | performer | Draggable per-channel fader strips + master + one-tap mute, over WebSocket. A human move makes the auto-ride **yield** on that channel for a few seconds (shared-control). |
+| **Coach mode** | advisory | A header toggle that flips every job from *acting* to *advising*: same detection, but instead of touching the console it lists the exact manual move (channel, band, dB, Hz) in a panel + the log. **No LLM/AI** — the numbers are the same deterministic math. For mixing by hand with guidance, or previewing what a job would do. |
 
 Everything passes through **guardrails** (hard fader/gain range, max step,
 smooth ramp), every move is **logged and reversible**, and a **TAKEOVER**

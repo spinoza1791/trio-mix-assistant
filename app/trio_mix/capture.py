@@ -444,7 +444,11 @@ def _rank_inputs(devs, hostapis, default_name, prefer_sr: int = C.SAMPLE_RATE):
         if int(round(d.get("default_samplerate", 0) or 0)) == prefer_sr:
             s += 5.0                                        # native at the app's rate
         api = api_name(d)
-        if any(k in api for k in ("WASAPI", "Core Audio", "ALSA", "JACK")):
+        if "ASIO" in api:
+            s += 4.0                                        # lowest-latency pro path; the
+                                                            # native driver for multichannel
+                                                            # interfaces (console X-USB cards)
+        elif any(k in api for k in ("WASAPI", "Core Audio", "ALSA", "JACK")):
             s += 3.0                                        # low-latency / no resampling
         if any(k in name.lower() for k in ("array", "built-in", "built in", "internal")):
             s -= 15.0                                       # prefer a plugged-in external mic
@@ -480,15 +484,51 @@ def autodetect_inputs(prefer_sr: int = C.SAMPLE_RATE):     # pragma: no cover - 
         return []
 
 
+def parse_channel_map(spec: str) -> dict[int, int]:
+    """Parse a '--channel-map' string into a {console_ch: device_column} map.
+
+    Format: comma-separated `console:device` pairs, e.g. '1:0,2:1,8:9' means
+    console channel 8 (the meas mic) is on device input column 9. Console
+    channels are 1-based; device columns are 0-based. Raises ValueError on
+    malformed input so the CLI can fail fast with a clear message."""
+    out: dict[int, int] = {}
+    for pair in spec.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if ":" not in pair:
+            raise ValueError(f"entry '{pair}' must be console:device (e.g. 8:9)")
+        c, d = pair.split(":", 1)
+        try:
+            ch, dev = int(c), int(d)
+        except ValueError:
+            raise ValueError(f"entry '{pair}' has non-integer channel/column")
+        if ch < 1 or dev < 0:
+            raise ValueError(f"entry '{pair}': console channel >= 1, device column >= 0")
+        out[ch] = dev
+    if not out:
+        raise ValueError("channel-map is empty")
+    return out
+
+
+def _format_device_list(devs, apis) -> str:
+    """Pure formatter for --list-devices (host API included so an operator can
+    pick the right WASAPI/ASIO instance of a device). Split out to be testable
+    without hardware; list_audio_devices() feeds it live sounddevice data."""
+    lines = []
+    for i, d in enumerate(devs):
+        if d.get("max_input_channels", 0) > 0:
+            h = d.get("hostapi")
+            api = apis[h]["name"] if isinstance(h, int) and 0 <= h < len(apis) else "?"
+            lines.append(f"  [{i}] {d['name']}  ({d['max_input_channels']} in, "
+                         f"{int(d.get('default_samplerate', 0))} Hz, {api})")
+    return "Input devices:\n" + ("\n".join(lines) or "  (none found)")
+
+
 def list_audio_devices() -> str:                           # pragma: no cover - needs hw
     """Human-readable list of input audio devices (for --list-devices)."""
     try:
         import sounddevice as sd
-        lines = []
-        for i, d in enumerate(sd.query_devices()):
-            if d.get("max_input_channels", 0) > 0:
-                lines.append(f"  [{i}] {d['name']}  ({d['max_input_channels']} in, "
-                             f"{int(d['default_samplerate'])} Hz)")
-        return "Input devices:\n" + ("\n".join(lines) or "  (none found)")
+        return _format_device_list(list(sd.query_devices()), list(sd.query_hostapis()))
     except Exception as e:
         return f"could not list audio devices: {e}"

@@ -150,6 +150,10 @@ FB_NOTCH_GAIN_DB = -9.0
 FB_NOTCH_Q = 8.0
 FB_STABLE_TOL = 0.03         # freq must stay within 3% to count as "stable"
 FB_RISE_DB = 0.3            # rms must climb this much/block to count "rising"
+FB_DETECT_FFT = 4096         # rolling high-res FFT for meas-mic ring detection
+                             # (4x the block -> ~11.7 Hz/bin; no added latency)
+FB_HARMONIC_SUSTAIN = 3      # extra sustain blocks demanded from a fully harmonic
+                             # (musical) tone, so a held note isn't notched as feedback
 
 # ---- Clip / overload ------------------------------------------------------
 CLIP_PEAK_DBFS = -1.0        # within 1 dB of full scale = clipping risk
@@ -165,6 +169,10 @@ CAL_PEAK_THRESH = 4.0        # dB above smoothed avg to count as a "peak"
 CAL_PREDIP_DB = -3.0         # pre-emptive dip on top feedback-prone freqs
 CAL_N_PREDIP = 2             # how many feedback freqs to pre-dip
 CAL_NOISE_DBFS = -20.0       # playback level for the pink-noise test
+
+# ---- Coach (advisory) mode ------------------------------------------------
+COACH_TTL_S = 8.0            # a standing manual-move recommendation expires this
+                            # long after it was last re-issued (problem cleared)
 
 # ---- Defaults for the four jobs (Phase 1: safety net only) ----------------
 DEFAULT_ENABLED = {

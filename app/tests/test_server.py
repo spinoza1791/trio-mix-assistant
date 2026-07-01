@@ -131,6 +131,15 @@ class TestServer(unittest.TestCase):
         ch3 = next(c for c in data["channels"] if c["ch"] == 3)
         self.assertTrue(ch3["muted"])
 
+    def test_coach_mode_command(self):
+        status, data = self._post("/api/command", {"type": "coach", "on": True})
+        self.assertEqual(status, 200)
+        self.assertTrue(data["coach"]["on"])
+        self.assertEqual(data["op_mode"], "coach")
+        self.assertIn("recs", data["coach"])
+        _, off = self._post("/api/command", {"type": "coach", "on": False})
+        self.assertFalse(off["coach"]["on"])
+
     def test_websocket_telemetry_and_control(self):
         s = _ws_connect(self.port)
         try:

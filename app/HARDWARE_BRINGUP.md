@@ -75,8 +75,9 @@ move it on the console and confirm the value the app reports matches.
 - [ ] Launch with `--audio-device <n>`; confirm `capture: {kind: audio, dead: false}`
       and that channel meters move with real input.
 - [ ] Verify the **channel map**: console channel N must map to the device channel the
-      app reads for role N. Default is N→N−1; set `channel_map` in `run.py`/`SoundDeviceCapture`
-      if your routing differs. Speak into the lead mic → the *lead* meter moves.
+      app reads for role N. Default is N→N−1; if your routing differs pass
+      `--channel-map "1:0,2:1,…,8:9"` (console 1-based : device column 0-based). Speak
+      into the lead mic → the *lead* meter moves. (Rig spec: `HARDWARE_SETUP.md`.)
 - [ ] Confirm the **measurement mic** is on `MEAS_MIC_CH` (config) and hears the room.
 - [ ] Confirm the startup log prints `listening on '<your interface>'` (catches a
       wrong/shifted device index) and the footer chip reads `audio: … ok`.

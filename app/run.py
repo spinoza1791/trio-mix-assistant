@@ -97,6 +97,11 @@ def main() -> None:
     ap.add_argument("--input-gain", type=float, default=0.0,
                     help="digital input boost in dB for a quiet mic/interface "
                          "(e.g. a dynamic Samson Q9U); try 20-40")
+    ap.add_argument("--channel-map", default=None,
+                    help="explicit console-channel:device-column map for the input "
+                         "device, e.g. '1:0,2:1,8:9' (console 1-based, column 0-based). "
+                         "Default: console N -> device column N-1. Use when the console's "
+                         "USB routing doesn't send channel N to USB column N-1.")
     ap.add_argument("--auto", action="store_true",
                     help="auto-detect the best input device, size the channel map "
                          "to it, and auto-set input gain (no --audio-device needed)")
@@ -146,6 +151,22 @@ def main() -> None:
         C.apply_channel_map(show_template.channels)
         print(f"  Channel map: {len(C.CHANNELS)} channels from template "
               f"'{show_template.name}'")
+
+    chan_map = None                      # explicit console-ch -> device-column map
+    if args.channel_map:
+        from trio_mix import config as C
+        from trio_mix.capture import parse_channel_map
+        try:
+            chan_map = parse_channel_map(args.channel_map)
+        except ValueError as exc:
+            print(f"  [!] --channel-map: {exc}")
+            sys.exit(2)
+        missing = [ch for ch in C.CHANNELS if ch not in chan_map]
+        if missing:                      # unmapped channels would be silently dropped
+            print(f"  [!] --channel-map is missing console channel(s) {missing}; "
+                  "they won't be captured. Add them or omit --channel-map.")
+        if args.auto:                    # --auto builds + sizes its own map
+            print("  [i] --channel-map is ignored with --auto (auto sizes its own map).")
 
     auto_source = None                   # --auto: open ranked devices for real, keep the
                                          # first that actually streams audio (no pre-verify)
@@ -203,7 +224,7 @@ def main() -> None:
             # pink-noise calibration and feedback catching with no console.
             source = SoundDeviceCapture(device=_dev(args.audio_device),
                                         output_device=_dev(args.output_device),
-                                        gain_db=args.input_gain)
+                                        channel_map=chan_map, gain_db=args.input_gain)
             print("  Listening on a REAL audio device against the emulated desk."
                   + (f"  (+{args.input_gain:.0f} dB input)" if args.input_gain else ""))
         else:
@@ -232,7 +253,7 @@ def main() -> None:
         elif args.audio_device is not None:
             source = SoundDeviceCapture(device=_dev(args.audio_device),
                                         output_device=_dev(args.output_device),
-                                        gain_db=args.input_gain)
+                                        channel_map=chan_map, gain_db=args.input_gain)
         # tick the loop near the audio block period so we consume ~1 block/tick
         engine = Engine(console=con, sim=False, source=source,
                         tick=C.BLOCK / C.SAMPLE_RATE, template=show_template)

@@ -56,6 +56,22 @@
   .status.auto{color:#9be7c4;border-color:#234b34;background:#0e1a13}
   .status.alert{color:#ffd9a3;border-color:#5e4423;background:#1f1408}
   .status.alert .dot{background:var(--cal,#f59e0b);background:#f5a623}
+  .status.coach{color:#a9d8ff;border-color:#244258;background:#0b1622}
+  .status.coach .dot{background:#5db4ff}
+  .coach-btn{display:inline-flex;align-items:center;gap:7px;font-weight:800;letter-spacing:.06em;font-size:13px;
+    padding:9px 13px;border-radius:10px;cursor:pointer;color:#a9d8ff;border:1px solid #244258;
+    background:linear-gradient(180deg,#122130,#0d1826);margin-right:10px}
+  .coach-btn:hover{border-color:#3a6d92}
+  .coach-btn:active{transform:translateY(1px) scale(.985)}
+  .coach-btn.on{color:#04121e;border-color:#5db4ff;background:linear-gradient(180deg,#8fd0ff,#5db4ff)}
+  .coachpanel{margin:0 0 22px}
+  .coachrecs{display:flex;flex-direction:column;gap:8px}
+  .crec{display:flex;gap:11px;align-items:baseline;padding:9px 12px;border-radius:9px;
+    background:#0b1622;border:1px solid #1c3346;border-left:3px solid #5db4ff;font-size:13px}
+  .crec .ck{font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;flex:0 0 62px;color:#7fc4ff}
+  .crec .cm{color:var(--ink)}
+  .crec.feedback{border-left-color:var(--reflex)} .crec.clip{border-left-color:var(--console)}
+  .logrow.coach{border-left-color:#5db4ff} .logrow.coach .k{color:#7fc4ff}
   .conn{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--mut)}
   .conn .d{width:8px;height:8px;border-radius:50%;background:var(--dim)}
   .conn.ok .d{background:var(--grn);box-shadow:0 0 8px rgba(52,211,153,.7)}
@@ -419,6 +435,7 @@
   </div>
   <span class="spacer"></span>
   <span class="uptime mono" id="uptime">0s</span>
+  <button class="coach-btn" id="coach" title="Coach mode: advise manual moves instead of auto-correcting — the console is never touched"><span id="coachlbl">COACH</span></button>
   <button class="takeover-btn" id="takeover" title="Mute main &amp; hold all automatic moves"><svg class="ic"><use href="#ic-takeover"/></svg><span id="tklbl">TAKEOVER</span></button>
 </header>
 
@@ -459,6 +476,11 @@
 
   <div class="sechead"><h2>Automatic jobs</h2><span class="hint">reflex = milliseconds · advisory = ~0.5 s · click to toggle</span></div>
   <div class="jobs" id="jobs"></div>
+
+  <div class="coachpanel" id="coachpanel" hidden>
+    <div class="sechead"><h2>Coach — manual moves</h2><span class="hint">advisory only · the console is <b>not</b> being touched · make these on the desk</span></div>
+    <div class="coachrecs" id="coachrecs"></div>
+  </div>
 
   <div class="sechead"><h2>Mixing surface</h2><span class="hint">drag faders · tap M to mute · a human move always wins</span></div>
   <div class="mixer" id="mixer"></div>
@@ -835,6 +857,7 @@ function render(s){
 
   // jobs
   for(const j of JOBS){ jobEls[j.key].classList.toggle("on", !!(s.enabled||{})[j.key]); }
+  renderCoach(s.coach);
 
   // channels
   for(const c of (s.channels||[])){
@@ -920,6 +943,17 @@ function render(s){
   ).join("") : `<div class="empty">No decisions yet. Toggle jobs or run calibration.</div>`;
 }
 
+function renderCoach(coach){
+  const on = !!(coach && coach.on);
+  $("#coach").classList.toggle("on", on);
+  const panel = $("#coachpanel"); panel.hidden = !on;
+  if(!on) return;
+  const recs = (coach && coach.recs) || [];
+  $("#coachrecs").innerHTML = recs.length
+    ? recs.map(r => `<div class="crec ${esc(r.kind)}"><span class="ck">${esc(r.kind)}</span><span class="cm">${esc(r.text)}</span></div>`).join("")
+    : `<div class="empty">No moves needed right now — the mix is within targets.</div>`;
+}
+
 // ---- control transport: WebSocket first, POST /api/command fallback ----
 async function post(path, body){
   try{ const r = await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body||{})}); if(r.ok) render(await r.json()); }catch(e){}
@@ -939,6 +973,7 @@ function action(obj){
   post("/api/command", obj);
 }
 $("#takeover").onclick = () => action({type:"panic", on: curStatus !== "takeover"});
+$("#coach").onclick = () => action({type:"coach", on: !(_lastState && _lastState.coach && _lastState.coach.on)});
 $("#calbtn").onclick   = () => action({type:"calibrate"});
 $("#balbtn").onclick   = () => action({type:"balance_capture"});
 $("#resetbtn").onclick = () => action({type:"reset_notches"});

@@ -104,6 +104,7 @@ class Engine:
         self._last_rx_t = -1e9               # monotonic time we last heard from the console
         self._last_reconcile_log = {}        # ch -> last time we logged an external move
         self._feat: dict[int, dsp.ChannelFeatures] = {}
+        self._meas_ring = dsp.RollingRingDetector()   # high-res meas-mic ring detection
         self._perf = {"tick_ms": 0.0, "jitter_ms": 0.0, "max_ms": 0.0}
         self._latency: dict[str, dict] = {}  # kind -> detect->actuate ms {last,ema,max,n}
         self._last_audio_restart = -1e9      # audio-recovery watchdog backoff
@@ -219,6 +220,11 @@ class Engine:
                         self.assistant.block_t0 = time.perf_counter()   # detect→actuate clock
                         for ch, samples in frame.items():
                             feat = dsp.analyse_block(samples)
+                            if ch == C.MEAS_MIC_CH:
+                                # refine the acoustic-feedback estimate on a longer
+                                # rolling window (finer freq resolution) — the
+                                # per-block rms/peak stay live off the current block.
+                                feat.fb_freq, feat.harmonicity = self._meas_ring.update(samples)
                             self._feat[ch] = feat
                             self.assistant.on_features(ch, feat, now)
                     self._note_perf(now, last_now)
@@ -336,6 +342,13 @@ class Engine:
             if job == "balance" and on:
                 self.assistant.capture_balance(self._output_levels())
             self.assistant._emit("system", f"{job} {'ENABLED' if on else 'disabled'}")
+            self._rebuild_telemetry()
+
+    def set_coach_mode(self, on: bool) -> None:
+        """Toggle the deterministic coach: jobs advise manual moves instead of
+        actuating the console. No AI — the moves are the same math as auto mode."""
+        with self._lock:
+            self.assistant.set_coach_mode(bool(on))
             self._rebuild_telemetry()
 
     def set_lead_target(self, db: float) -> None:
@@ -673,6 +686,8 @@ class Engine:
                 self.set_master(_num(d["db"]))
             elif t == "toggle":
                 self.set_enabled(str(d["job"]), bool(d["on"]))
+            elif t == "coach":
+                self.set_coach_mode(bool(d["on"]))
             elif t == "panic":
                 self.panic(bool(d["on"]))
             elif t == "calibrate":
@@ -897,7 +912,9 @@ class Engine:
         elif self.status == "calibrating":
             op_mode = "calibrating"
         elif any(a["level"] in ("warn", "critical") for a in alerts):
-            op_mode = "alert"
+            op_mode = "alert"          # safety alerts still win the pill over coach
+        elif self.assistant.coach_mode:
+            op_mode = "coach"
         else:
             op_mode = "auto"
         return alerts, op_mode
@@ -935,6 +952,8 @@ class Engine:
                      "contrast_db": round(self.assistant.room_contrast_db, 1),
                      "confidence": self.assistant.room_confidence},
             "enabled": dict(self.assistant.enabled),
+            "coach": {"on": self.assistant.coach_mode,
+                      "recs": self.assistant.coach_snapshot(now)},
             "main_muted": getattr(self.con, "main_muted", False),
             "master": {"fader": round(self.master_db, 1)},
             "eq": {c: [{"band": b, "hz": round(bd["hz"]), "gain": round(bd["gain"], 1),

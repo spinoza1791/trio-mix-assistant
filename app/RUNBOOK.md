@@ -186,6 +186,13 @@ Launched with `--lan` (and ideally `--https`):
   the **first 8 bars** of a song.
 - **Operator overrides win:** a console/iPad fader move is adopted automatically; the
   app stops riding that channel briefly. EQ/FX/fader edits stay live even under takeover.
+- **COACH** (header button): flips the assistant from *acting* to *advising*. It detects
+  the same feedback/clip/level problems but, instead of touching the console, lists the
+  exact manual move — channel, band, dB, Hz — in a **Coach — manual moves** panel and the
+  decision log (e.g. *"Feedback 2.5 kHz in the room → cut the MAIN BUS at 2500 Hz by −9 dB
+  (Q 8)"*). Zero console writes, no AI — the numbers are the same deterministic math the
+  automatic jobs would use. The status pill reads **COACH**. Use it to mix by hand with
+  the app as a guide, or to see what it *would* do before trusting a job.
 - **TAKEOVER** = panic: mutes main, freezes all automatic jobs + scene recall +
   calibration. Tap again to release.
 - **AI advisor** (if enabled) posts short suggestions in its card — they are *advice*,
@@ -226,7 +233,10 @@ not your firmware's exact formats — that's still §2.4.)
 | `--console-ip <ip>` | the M32C's IP (hardware mode) |
 | `--audio-device <n>` | input device index/name for the listening half |
 | `--output-device <n>` | output device the calibration pink noise plays to (point at the PA) |
-| `--list-devices` | print input devices and exit |
+| `--auto` | auto-detect the best input device, size the channel map to it, auto-set input gain |
+| `--input-gain <dB>` | digital input boost for a quiet mic/interface (try 20–40) |
+| `--channel-map "1:0,…"` | explicit console-channel:device-column map (console 1-based, column 0-based); default N→N−1 |
+| `--list-devices` | print input devices (with host API) and exit |
 | `--template <file.json>` | per‑song scenes + reference levels, **and an optional channel map** (e.g. `templates/autofoh_pilot.json` = a 13‑input rig); else the built‑in 8‑ch trio |
 | `--ableset-port <p>` | listen for AbleSet song/section OSC → auto scene recall |
 | `--no-show-clock` | disable the simulated show clock (sim only) |

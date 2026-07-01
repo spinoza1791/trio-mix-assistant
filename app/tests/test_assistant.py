@@ -81,6 +81,20 @@ class TestFeedback(unittest.TestCase):
         self.assertTrue(con_w.notches.get(2))
         self.assertFalse(con_n.notches.get(2))
 
+    def test_harmonic_tone_needs_more_sustain(self):
+        # Same rising, stable ring on two channels; the one flagged as harmonic
+        # (a musical note) must NOT notch as fast as the pure-tone one.
+        con_p = SimConsole(); ap = MixAssistant(con_p)
+        con_h = SimConsole(); ah = MixAssistant(con_h)
+        for i in range(6):                                   # enough for a pure tone
+            lvl = -30 + i
+            ap.on_features(2, ChannelFeatures(rms_dbfs=lvl, peak_dbfs=-20,
+                                              fb_freq=2500, harmonicity=0.0), now=0.0)
+            ah.on_features(2, ChannelFeatures(rms_dbfs=lvl, peak_dbfs=-20,
+                                              fb_freq=2500, harmonicity=1.0), now=0.0)
+        self.assertTrue(con_p.notches.get(2))                # pure ring -> notched
+        self.assertFalse(con_h.notches.get(2))               # harmonic -> held back
+
     def test_reset_clears_notches(self):
         con = SimConsole()
         a = MixAssistant(con)

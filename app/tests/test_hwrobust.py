@@ -12,7 +12,8 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from trio_mix import config as C
-from trio_mix.capture import CaptureError, CaptureSource, SoundDeviceCapture, _pick_input
+from trio_mix.capture import (CaptureError, CaptureSource, SoundDeviceCapture,
+                              _pick_input, _format_device_list, parse_channel_map)
 from trio_mix.engine import Engine
 
 
@@ -271,6 +272,52 @@ class TestAutoDetect(unittest.TestCase):
         devs = [{"name": "Microphone Array (Realtek)", "max_input_channels": 2,
                  "default_samplerate": 48000, "hostapi": 0}]
         self.assertIsNotNone(_pick_input(devs, apis, None))   # still picked if it's all there is
+
+    def test_asio_beats_wasapi_for_same_interface(self):
+        # A pro interface (console X-USB) shows up under both WASAPI and ASIO;
+        # ASIO is the lower-latency native path and must win the tiebreak.
+        apis = [{"name": "Windows WASAPI"}, {"name": "ASIO"}]
+        devs = [
+            {"name": "X-USB", "max_input_channels": 32, "default_samplerate": 48000, "hostapi": 0},
+            {"name": "X-USB", "max_input_channels": 32, "default_samplerate": 48000, "hostapi": 1},
+        ]
+        pick = _pick_input(devs, apis, None, prefer_sr=48000)
+        self.assertEqual(pick["hostapi"], "ASIO")
+
+
+class TestDeviceListFormatting(unittest.TestCase):
+    def test_list_shows_hostapi_and_only_inputs(self):
+        apis = [{"name": "MME"}, {"name": "Windows WASAPI"}]
+        devs = [
+            {"name": "X-USB", "max_input_channels": 32, "default_samplerate": 48000, "hostapi": 1},
+            {"name": "Speakers", "max_input_channels": 0, "default_samplerate": 48000, "hostapi": 0},
+            {"name": "Q9U", "max_input_channels": 1, "default_samplerate": 44100, "hostapi": 0},
+        ]
+        out = _format_device_list(devs, apis)
+        self.assertIn("[0] X-USB  (32 in, 48000 Hz, Windows WASAPI)", out)
+        self.assertIn("[2] Q9U  (1 in, 44100 Hz, MME)", out)
+        self.assertNotIn("Speakers", out)                 # output-only device omitted
+
+    def test_empty_list(self):
+        self.assertIn("(none found)", _format_device_list([], []))
+
+
+class TestChannelMapParsing(unittest.TestCase):
+    def test_valid_map(self):
+        self.assertEqual(parse_channel_map("1:0,2:1,8:9"), {1: 0, 2: 1, 8: 9})
+
+    def test_whitespace_and_trailing_comma(self):
+        self.assertEqual(parse_channel_map(" 1:0 , 2:1 ,"), {1: 0, 2: 1})
+
+    def test_custom_map_reaches_capture(self):
+        cap = SoundDeviceCapture(device=0, channel_map=parse_channel_map("1:0,8:9"))
+        self.assertEqual(cap.channel_map, {1: 0, 8: 9})
+        self.assertEqual(cap.ndev, 10)                    # opens columns 0..9 (max+1)
+
+    def test_bad_maps_raise(self):
+        for bad in ("", "8", "8:x", "0:0", "8:-1", "  "):
+            with self.assertRaises(ValueError):
+                parse_channel_map(bad)
 
 
 class TestAutoChannelMap(unittest.TestCase):

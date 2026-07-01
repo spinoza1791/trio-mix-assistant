@@ -32,6 +32,14 @@ class MixAssistant:
         self.enabled = dict(C.DEFAULT_ENABLED)
         self.lead_target = C.LEAD_TARGET_DB        # runtime-adjustable
 
+        # Coach (advisory) mode: compute every correction exactly as in auto, but
+        # instead of writing to the console, tell the engineer the move to make by
+        # hand. No LLM/AI — the numbers come straight from the deterministic jobs.
+        self.coach_mode = False
+        self.coach_recs: dict[tuple, dict] = {}    # (kind, ch) -> latest recommendation
+        self._coach_last_text: dict[tuple, str] = {}
+        self._coach_seq = 0
+
         chans = list(C.CHANNELS)
         self.fader_db = {ch: 0.0 for ch in chans}        # believed positions
         self.gain_db = {ch: 20.0 for ch in chans}
@@ -83,6 +91,51 @@ class MixAssistant:
         if self.on_event:
             self.on_event(ev)
 
+    # -- coach (advisory) mode ---------------------------------------------
+    def set_coach_mode(self, on: bool) -> None:
+        """Toggle advisory mode. When ON, jobs recommend manual moves instead of
+        actuating; the console is never written. Turning it off clears any
+        standing recommendations."""
+        on = bool(on)
+        if on == self.coach_mode:
+            return
+        self.coach_mode = on
+        if not on:
+            self.coach_recs.clear()
+            self._coach_last_text.clear()
+        self._emit("system",
+                   "coach mode ON — advising manual moves (console untouched)"
+                   if on else "coach mode off")
+
+    def _recommend(self, kind: str, ch: int | None, text: str, **meta) -> None:
+        """Record/refresh a standing manual-move recommendation (keyed by kind+ch)
+        and log it once per distinct instruction, so a persistent problem doesn't
+        spam the decision log."""
+        self._coach_seq += 1
+        key = (kind, ch)
+        self.coach_recs[key] = {"seq": self._coach_seq, "mono": time.monotonic(),
+                                "time": time.strftime("%H:%M:%S"), "kind": kind,
+                                "ch": ch, "role": C.CHANNELS.get(ch), "text": text, **meta}
+        if self._coach_last_text.get(key) != text:
+            self._coach_last_text[key] = text
+            self._emit("coach", text, ch)
+
+    def coach_snapshot(self, now: float | None = None) -> list[dict]:
+        """Current recommendations, freshest first, dropping any that haven't been
+        re-issued within COACH_TTL_S (the problem cleared, or the engineer fixed
+        it) — also purges them so they don't linger in state."""
+        now = time.monotonic() if now is None else now
+        live = []
+        for key in list(self.coach_recs):
+            rec = self.coach_recs[key]
+            if now - rec["mono"] > C.COACH_TTL_S:
+                del self.coach_recs[key]
+                self._coach_last_text.pop(key, None)
+            else:
+                live.append(rec)
+        live.sort(key=lambda r: r["seq"], reverse=True)
+        return live
+
     def _note_latency(self, kind: str) -> None:
         """Record detect→actuate latency: from when this block's analysis began
         (engine sets block_t0) to the OSC command we just issued."""
@@ -117,6 +170,13 @@ class MixAssistant:
             rising = feat.rms_dbfs > self.fb_last_level[ch] + C.FB_RISE_DB
             near = self._is_near_watch(feat.fb_freq)
             need = max(1, C.FB_SUSTAIN_BLOCKS - (1 if near else 0))
+            # A tone carrying strong harmonics is a musical note, not a ring:
+            # demand proportionally more sustain so a held note (organ, bowed
+            # string, sustained vocal) can't be mistaken for feedback. A pure
+            # ring has harmonicity ~0 -> no change (validated behaviour intact).
+            harm = getattr(feat, "harmonicity", 0.0)
+            if harm > 0.0:
+                need += int(round(harm * C.FB_HARMONIC_SUSTAIN))
             if ch == C.MEAS_MIC_CH and self.room_confidence < 0.7:
                 # loud/noisy room: require more sustain before a room-feedback
                 # notch, so crowd noise can't trigger a false main-bus cut
@@ -128,6 +188,7 @@ class MixAssistant:
                 self.fb_streak[ch] = max(0, self.fb_streak[ch] - 1)
 
             if self.fb_streak[ch] >= need:
+                flag = " [watch-list]" if near else ""
                 if ch == C.MEAS_MIC_CH:
                     # Acoustic feedback heard in the room -> notch the MAIN BUS,
                     # which cuts the frequency from everything feeding the PA.
@@ -135,21 +196,39 @@ class MixAssistant:
                     # EQ would do nothing. A band allocator keeps these clear of
                     # the bands calibration claimed (no clobbering room cuts).
                     band = self._alloc_bus_band()
-                    self.con.set_bus_eq(band, feat.fb_freq,
-                                        C.FB_NOTCH_GAIN_DB, C.FB_NOTCH_Q)
-                    if band not in self.fb_bus_bands:
-                        self.fb_bus_bands.append(band)
-                    self.used_bus_notch_band += 1
-                    where = f"main-bus band {band}"
+                    if self.coach_mode:
+                        self._recommend("feedback", ch,
+                            f"Feedback {feat.fb_freq:.0f} Hz in the room → cut the MAIN "
+                            f"BUS at {feat.fb_freq:.0f} Hz by {C.FB_NOTCH_GAIN_DB:.0f} dB "
+                            f"(Q {C.FB_NOTCH_Q:.0f}); e.g. main PEQ band {band}.{flag}",
+                            freq=round(feat.fb_freq, 1), gain_db=C.FB_NOTCH_GAIN_DB,
+                            q=C.FB_NOTCH_Q, target="main-bus", band=band)
+                    else:
+                        self.con.set_bus_eq(band, feat.fb_freq,
+                                            C.FB_NOTCH_GAIN_DB, C.FB_NOTCH_Q)
+                        if band not in self.fb_bus_bands:
+                            self.fb_bus_bands.append(band)
+                        self.used_bus_notch_band += 1
+                        self._emit("feedback",
+                                   f"{feat.fb_freq:.0f} Hz on {C.CHANNELS[ch]} → "
+                                   f"main-bus band {band}{flag}", ch)
+                        self._note_latency("feedback")
                 else:
                     band = (self.used_notch_band[ch] % 4) + 1
-                    self.con.set_eq_notch(ch, band, feat.fb_freq)
-                    self.used_notch_band[ch] = band
-                    where = f"notch band {band}"
-                flag = " [watch-list]" if near else ""
-                self._emit("feedback",
-                           f"{feat.fb_freq:.0f} Hz on {C.CHANNELS[ch]} → {where}{flag}", ch)
-                self._note_latency("feedback")
+                    if self.coach_mode:
+                        self._recommend("feedback", ch,
+                            f"Feedback {feat.fb_freq:.0f} Hz on {C.CHANNELS[ch]} → notch "
+                            f"input EQ band {band} at {feat.fb_freq:.0f} Hz, "
+                            f"{C.FB_NOTCH_GAIN_DB:.0f} dB (Q {C.FB_NOTCH_Q:.0f}).{flag}",
+                            freq=round(feat.fb_freq, 1), gain_db=C.FB_NOTCH_GAIN_DB,
+                            q=C.FB_NOTCH_Q, target=f"ch{ch}", band=band)
+                    else:
+                        self.con.set_eq_notch(ch, band, feat.fb_freq)
+                        self.used_notch_band[ch] = band
+                        self._emit("feedback",
+                                   f"{feat.fb_freq:.0f} Hz on {C.CHANNELS[ch]} → "
+                                   f"notch band {band}{flag}", ch)
+                        self._note_latency("feedback")
                 self.fb_streak[ch] = 0
             self.fb_last_freq[ch] = feat.fb_freq
             self.fb_last_level[ch] = feat.rms_dbfs
@@ -165,6 +244,12 @@ class MixAssistant:
         if not self.enabled["clip"]:
             return
         if feat.peak_dbfs > C.CLIP_PEAK_DBFS:
+            if self.coach_mode:
+                self._recommend("clip", ch,
+                    f"{C.CHANNELS[ch]} near clip ({feat.peak_dbfs:+.1f} dBFS) → trim its "
+                    f"preamp/gain {C.CLIP_TRIM_DB:+.0f} dB.",
+                    peak=round(feat.peak_dbfs, 1), trim_db=C.CLIP_TRIM_DB)
+                return
             self.gain_db[ch] = self.con.nudge_gain_db(
                 ch, self.gain_db[ch], C.CLIP_TRIM_DB)
             self.last_clip_t[ch] = now
@@ -206,6 +291,15 @@ class MixAssistant:
         newf = _clamp(start + step, C.FADER_MIN_DB, C.FADER_MAX_DB)
         self.last_ride_t[ch] = now
         if abs(newf - start) < 0.05:        # railed / nothing to do -> don't spam
+            return
+        if self.coach_mode:
+            direction = "up" if newf > start else "down"
+            self._recommend(kind, ch,
+                f"{C.CHANNELS[ch]}: output {output_est:+.1f} dB vs target "
+                f"{target_out:+.1f} → move the fader {direction} {abs(newf - start):.1f} dB "
+                f"(to {newf:+.1f}).", output_db=round(output_est, 1),
+                target_db=round(target_out, 1), delta_db=round(newf - start, 2),
+                to_db=round(newf, 1))
             return
         self.fader_db[ch] = self.con.ramp_fader_db(ch, start, newf)
         self.last_move_t[ch] = now            # so reconciliation ignores our echo
@@ -324,6 +418,7 @@ class MixAssistant:
     def snapshot(self) -> dict:
         return {
             "enabled": dict(self.enabled),
+            "coach_mode": self.coach_mode,
             "fader_db": {c: round(v, 1) for c, v in self.fader_db.items()},
             "gain_db": {c: round(v, 1) for c, v in self.gain_db.items()},
             "notch_bands": {c: self.used_notch_band[c] for c in C.CHANNELS},

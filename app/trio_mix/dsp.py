@@ -21,6 +21,7 @@ class ChannelFeatures:
     peak_dbfs: float = -90.0
     fb_freq: float | None = None          # flagged ringing frequency, if any
     contrast_db: float = 0.0              # spectral peakiness (max-median); SNR proxy
+    harmonicity: float = 0.0              # 0=pure tone (feedback-like) .. 1=harmonic (musical)
     spectrum: np.ndarray = field(default_factory=lambda: np.zeros(0))
 
 
@@ -43,15 +44,42 @@ def analyse_block(samples: np.ndarray, sr: int = C.SAMPLE_RATE) -> ChannelFeatur
     if mag.size:
         db = 20 * np.log10(mag + 1e-9)
         f.contrast_db = float(np.max(db) - np.median(db))
-    f.fb_freq = detect_ring(mag, sr)
+        k = _find_ring_bin(db)            # share one FFT for freq + harmonicity
+        if k is not None:
+            f.fb_freq = _bin_to_hz(_parabolic_peak(db, k), mag.size, sr)
+            f.harmonicity = _harmonicity(db, k)
     return f
 
 
-def detect_ring(mag: np.ndarray, sr: int = C.SAMPLE_RATE) -> float | None:
-    """Flag a narrowband peak sitting well above its neighbours (a ring)."""
-    if mag.size < 16:
+def _bin_to_hz(k: float, nbins: int, sr: int) -> float:
+    """Convert a (possibly fractional) rfft bin index to Hz."""
+    return k * (sr / 2) / (nbins - 1)
+
+
+def _parabolic_peak(db: np.ndarray, k: int) -> float:
+    """Sub-bin peak location via parabolic interpolation on the log-magnitude
+    spectrum (Smith/Serra). A raw FFT bin index quantises the frequency to
+    sr/N steps (~47 Hz at N=1024/48k) — fine at 2 kHz but ±12% at 200 Hz, so a
+    notch lands off the ring. Fitting a parabola to the peak bin and its two
+    neighbours recovers the true frequency to a fraction of a bin, for free."""
+    if k <= 0 or k >= db.size - 1:
+        return float(k)
+    a, b, c = float(db[k - 1]), float(db[k]), float(db[k + 1])
+    denom = a - 2.0 * b + c
+    if denom == 0.0:
+        return float(k)                   # flat top -> no better estimate than k
+    delta = 0.5 * (a - c) / denom
+    if not -0.5 <= delta <= 0.5:          # ill-conditioned -> fall back to the bin
+        return float(k)
+    return k + delta
+
+
+def _find_ring_bin(db: np.ndarray) -> int | None:
+    """Index of a narrowband peak sitting well above its neighbours (a ring), or
+    None. `db` is 20*log10(magnitude). Resolution-agnostic: works on a 1024-pt
+    block spectrum or a longer high-res window alike."""
+    if db.size < 16:
         return None
-    db = 20 * np.log10(mag + 1e-9)
     k = int(np.argmax(db))
     if k == 0:
         return None                       # DC is never feedback (and guards /0)
@@ -61,8 +89,85 @@ def detect_ring(mag: np.ndarray, sr: int = C.SAMPLE_RATE) -> float | None:
     if neighbourhood.size == 0:
         return None
     if db[k] - float(np.median(neighbourhood)) > C.FB_RING_DB:
-        return k * (sr / 2) / (mag.size - 1)
+        return k
     return None
+
+
+def _harmonicity(db: np.ndarray, k: int) -> float:
+    """0..1 estimate of how much of a harmonic series sits above the peak.
+
+    Acoustic feedback is a near-pure tone (no harmonic partials); a sustained
+    musical note (organ, bowed string, held vocal) is *also* a narrowband peak
+    but carries strong 2nd/3rd harmonics. Requiring BOTH partials (we take the
+    weaker) makes this a robust "is this music?" signal that the assistant uses
+    to demand more sustain before notching — so it can't be fooled into cutting
+    a held note. ~0 for a pure ring, ->1 for a rich musical tone."""
+    floor = float(np.median(db))
+    fund = float(db[k]) - floor
+    if fund <= 0.0:
+        return 0.0
+    partials = []
+    for h in (2, 3):
+        kb = k * h
+        if kb < db.size:
+            partials.append(max(0.0, float(db[kb]) - floor))
+    if len(partials) < 2:                 # fundamental too high to see 2 harmonics
+        return 0.0
+    return float(min(1.0, min(partials) / fund))
+
+
+def detect_ring(mag: np.ndarray, sr: int = C.SAMPLE_RATE) -> float | None:
+    """Flag a narrowband ring and return its (sub-bin-interpolated) frequency."""
+    if mag.size < 16:
+        return None
+    db = 20 * np.log10(mag + 1e-9)
+    k = _find_ring_bin(db)
+    if k is None:
+        return None
+    return _bin_to_hz(_parabolic_peak(db, k), mag.size, sr)
+
+
+def ring_harmonicity(mag: np.ndarray) -> float:
+    """Public wrapper: harmonicity (0..1) of the dominant ring in a spectrum."""
+    if mag.size < 16:
+        return 0.0
+    db = 20 * np.log10(mag + 1e-9)
+    k = _find_ring_bin(db)
+    return 0.0 if k is None else _harmonicity(db, k)
+
+
+class RollingRingDetector:
+    """Higher-resolution feedback detection over a rolling analysis window.
+
+    The engine's per-block FFT (BLOCK=1024 -> ~47 Hz/bin) is too coarse to place
+    a notch accurately on low / low-mid feedback. This keeps a rolling buffer of
+    the most recent `fft_size` samples and runs the ring detector on it (e.g.
+    4096 -> ~11.7 Hz/bin) WITHOUT adding detection latency: it still decides
+    every block on the newest data, and sub-bin interpolation refines further.
+    Stateful — one instance per analysed channel (the engine uses it for the
+    measurement mic, where feedback is acoustic and the resolution gain matters
+    most). Falls back to whatever history it has until the buffer fills."""
+
+    def __init__(self, fft_size: int | None = None, sr: int = C.SAMPLE_RATE) -> None:
+        self.n = int(fft_size or C.FB_DETECT_FFT)
+        self.sr = sr
+        self._buf = np.zeros(0, dtype=np.float32)
+        self._win = np.hanning(self.n)
+
+    def update(self, samples: np.ndarray) -> tuple[float | None, float]:
+        """Push a new block; return (fb_freq | None, harmonicity) at high res."""
+        if samples.size:
+            self._buf = np.concatenate([self._buf, samples])[-self.n:]
+        buf = self._buf
+        if buf.size < 16:
+            return None, 0.0
+        win = buf * (self._win if buf.size == self.n else np.hanning(buf.size))
+        mag = np.abs(np.fft.rfft(win))
+        db = 20 * np.log10(mag + 1e-9)
+        k = _find_ring_bin(db)
+        if k is None:
+            return None, 0.0
+        return _bin_to_hz(_parabolic_peak(db, k), mag.size, self.sr), _harmonicity(db, k)
 
 
 # ---------------------------------------------------------------------------
