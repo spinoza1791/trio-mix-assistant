@@ -164,6 +164,8 @@ The QR at right is an *example* (`https://192.168.1.50:8770/`); yours encodes th
 
 On a trusted FOH LAN the dashboard is open (no login). On shared/venue WiFi, add **`--pin "1234"`** (ideally with `--https`): the dashboard then asks for the PIN before it opens, and **every** control endpoint and the telemetry stream require it — so a stranger on the WiFi can't touch the console. The PIN is entered once per device (a `HttpOnly; SameSite=Strict` session cookie), with lockout after repeated wrong tries. The server also validates the `Host` header (DNS‑rebinding guard) regardless of the PIN.
 
+**Zero cert warnings:** a self‑signed cert always shows a one‑time browser warning (it's encrypted but not *trusted*). To remove it completely, launch with **`--trust`**: the app runs a local root CA and serves a cert signed by it, then prints steps to install that root **once per device** (browse to `/ca.pem`, or copy `app/.certs/ca.pem`). After the one‑time install, every https connection is fully trusted — green padlock, no warning. (There's no server‑only way to skip the per‑device install; that's how certificate trust works. The alternative is plain http — no cert, no warning, but no PWA/Wake‑Lock and the PIN travels in clear.)
+
 <img src="docs/screenshots/pin-login.png" width="360" alt="PIN login screen">
 
 <a id="x32-edit"></a>

@@ -117,6 +117,10 @@ def main() -> None:
                     help="require this access PIN to open the dashboard and control "
                          "the console (recommended on untrusted networks; pair with "
                          "--https). Omit for no auth on a trusted FOH LAN.")
+    ap.add_argument("--trust", action="store_true",
+                    help="serve a cert signed by a local root CA (implies --https). "
+                         "Install the printed root once per device (browse to /ca.pem) "
+                         "for a fully-trusted, warning-FREE https connection.")
     ap.add_argument("--template", default=None,
                     help="show-template JSON (songs -> scene + reference levels); "
                          "omit to use the built-in trio setlist")
@@ -138,6 +142,8 @@ def main() -> None:
     args = ap.parse_args()
     if args.lan:
         args.host = "0.0.0.0"
+    if args.trust:
+        args.https = True                # a CA-signed cert is only useful over TLS
 
     if args.list_devices:
         from trio_mix.capture import list_audio_devices
@@ -326,8 +332,31 @@ def main() -> None:
         print(f"  X32-Edit: connect it to  {ip}:{emu.listen_port}  (or 127.0.0.1 on this PC)")
         print(f"            it mirrors the app live; identity = {C.X32_MODEL}/{C.X32_FW}"
               + ("  [--trace-osc ON]" if args.trace_osc else ""))
+    # Prepare TLS BEFORE serving so the root CA (if any) can be handed to the
+    # server for the /ca.pem install route. Cover every interface the tablet might
+    # reach (multi-NIC / VPN) so the cert SAN matches whichever LAN IP the URL uses.
+    tls_files = ca_pem = None
+    if args.https:
+        try:
+            from trio_mix import tls as _tls
+            hosts, seen = [], set()
+            for h in ["localhost", "127.0.0.1"] + _all_lan_ips():
+                if h and h not in seen:
+                    seen.add(h); hosts.append(h)
+            certdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".certs")
+            if args.trust:
+                certfile, keyfile, cafile = _tls.ensure_trusted_cert(certdir, hosts)
+                with open(cafile, "r", encoding="utf-8") as f:
+                    ca_pem = f.read()
+            else:
+                certfile, keyfile = _tls.ensure_cert(certdir, hosts)
+            tls_files = (certfile, keyfile)
+        except Exception as exc:        # missing cryptography+openssl, or cert error
+            print(f"  [!] --https unavailable ({type(exc).__name__}: {exc}); serving over http.")
+            print("      For TLS: pip install cryptography  (or put openssl on PATH).")
+
     try:
-        httpd = serve(engine, args.host, args.port, pin=args.pin)   # bind first; don't start threads if it fails
+        httpd = serve(engine, args.host, args.port, pin=args.pin, ca_pem=ca_pem)  # bind first
     except OSError as exc:
         print(f"  [!] Could not open the dashboard on port {args.port}: {exc}")
         print(f"      Another copy already running? Try a different port:  --port {args.port + 1}")
@@ -336,27 +365,15 @@ def main() -> None:
         sys.exit(2)
     engine.start()                       # --auto already started + gained the source above
     scheme = "http"
-    if args.https:
+    if tls_files:
         try:
             import ssl
-            from trio_mix.tls import ensure_cert
-            # Cover every interface the tablet might reach (multi-NIC / VPN), so
-            # the cert's SAN matches whichever LAN IP the URL uses — a SAN mismatch
-            # is another "can't proceed" cert error.
-            hosts, seen = [], set()
-            for h in ["localhost", "127.0.0.1"] + _all_lan_ips():
-                if h and h not in seen:
-                    seen.add(h); hosts.append(h)
-            certdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".certs")
-            certfile, keyfile = ensure_cert(certdir, hosts)
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            ctx.load_cert_chain(certfile, keyfile)
+            ctx.load_cert_chain(*tls_files)
             httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
             scheme = "https"
-        except Exception as exc:        # missing cryptography+openssl, or cert error
-            print(f"  [!] --https unavailable ({type(exc).__name__}: {exc}); "
-                  "serving over http.")
-            print("      For TLS: pip install cryptography  (or put openssl on PATH).")
+        except Exception as exc:        # cert unreadable / key mismatch
+            print(f"  [!] --https unavailable ({type(exc).__name__}: {exc}); serving over http.")
 
     mode = ("EMULATED-HARDWARE" if args.emulate else
             "HARDWARE" if args.hardware else "SIMULATION")
@@ -365,6 +382,20 @@ def main() -> None:
         print("  PIN auth: ON — the dashboard asks for the PIN before it opens.")
         if scheme != "https":
             print("  [!] PIN over plain http is sniffable on the LAN — add --https.")
+    if args.trust and scheme == "https":
+        capath = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".certs", "ca.pem")
+        host_url = ip or (args.host if args.host not in ("0.0.0.0", "::") else "127.0.0.1")
+        print("  Trusted TLS — do this ONCE per device for ZERO warnings:")
+        print(f"    1) Get the root CA onto the device — copy / AirDrop / email this file:")
+        print(f"         {capath}")
+        if ip:
+            print(f"       (or, if a device lets you tap through the warning once: {scheme}://{ip}:{args.port}/ca.pem )")
+        print("    2) Install + TRUST it:")
+        print("         iOS:     install the profile, then Settings > General > About > Certificate Trust Settings > enable it")
+        print("         Android: Settings > Security > Install a certificate > CA certificate")
+        print("         macOS:   double-click > Keychain 'System' > set this cert to 'Always Trust'")
+        print("         Windows: double-click > Install > Local Machine > 'Trusted Root Certification Authorities'")
+        print(f"    3) Reload  {scheme}://{host_url}:{args.port}/  — trusted, no warning.")
     if args.emulate:
         print("  Real OSC stack over localhost sockets against the desk emulator.")
         print("  NB: wire formats are assumptions — see HARDWARE_BRINGUP.md to validate.")

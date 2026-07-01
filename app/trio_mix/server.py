@@ -216,7 +216,7 @@ f.onsubmit=async e=>{e.preventDefault();err.textContent="";
 </script></body></html>"""
 
 
-def make_handler(engine: Engine, pin: str | None = None):
+def make_handler(engine: Engine, pin: str | None = None, ca_pem: str | None = None):
     streams = threading.Semaphore(_MAX_STREAMS)   # cap long-lived SSE+WS threads
     pin = str(pin) if pin not in (None, "") else None   # None -> auth disabled
     token = secrets.token_urlsafe(32) if pin else None  # per-process session bearer
@@ -353,6 +353,16 @@ def make_handler(engine: Engine, pin: str | None = None):
                 self._send_text(_MANIFEST, "application/manifest+json")
             elif path == "/icon.svg":
                 self._send_text(_ICON_SVG, "image/svg+xml")
+            elif path in ("/ca.pem", "/ca.crt") and ca_pem:
+                # The public root CA, for one-tap install on a device (no auth —
+                # a CA certificate is public). iOS treats this MIME as a profile.
+                body = ca_pem.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/x-x509-ca-cert")
+                self.send_header("Content-Disposition", 'attachment; filename="MixAssistant-CA.pem"')
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
             else:
                 self.send_error(404)
 
@@ -514,5 +524,5 @@ class _QuietServer(ThreadingHTTPServer):
 
 
 def serve(engine: Engine, host: str = "127.0.0.1", port: int = 8770,
-          pin: str | None = None):
-    return _QuietServer((host, port), make_handler(engine, pin))
+          pin: str | None = None, ca_pem: str | None = None):
+    return _QuietServer((host, port), make_handler(engine, pin, ca_pem))

@@ -70,6 +70,70 @@ class TestTLS(unittest.TestCase):
             self.assertLessEqual(_lifetime_days(c1), 398)         # regenerated short-lived
         finally:
             shutil.rmtree(d, ignore_errors=True)
+
+    def test_trusted_ca_mode_shapes(self):
+        from trio_mix.tls import ensure_trusted_cert
+        from cryptography import x509
+        from cryptography.x509.oid import ExtendedKeyUsageOID
+        d = tempfile.mkdtemp(prefix="autofoh_ca_")
+        try:
+            cert, key, ca = ensure_trusted_cert(d, ["127.0.0.1", "192.168.1.50"])
+            self.assertTrue(all(os.path.exists(p) for p in (cert, key, ca)))
+            ca_c = x509.load_pem_x509_certificate(open(ca, "rb").read())
+            self.assertTrue(ca_c.extensions.get_extension_for_class(  # the CA is a CA
+                x509.BasicConstraints).value.ca)
+            leaf = x509.load_pem_x509_certificate(open(cert, "rb").read())  # first in the chain
+            self.assertEqual(leaf.issuer, ca_c.subject)           # leaf signed by our CA
+            self.assertFalse(leaf.extensions.get_extension_for_class(
+                x509.BasicConstraints).value.ca)
+            self.assertIn(ExtendedKeyUsageOID.SERVER_AUTH,
+                          leaf.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value)
+            self.assertLessEqual(_lifetime_days(leaf), 398)
+            san = leaf.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+            self.assertIn(ipaddress.ip_address("192.168.1.50"),
+                          san.get_values_for_type(x509.IPAddress))
+            # idempotent: the same root CA is reused on a re-issue
+            _, _, ca2 = ensure_trusted_cert(d, ["127.0.0.1"])
+            self.assertEqual(ca_c.serial_number,
+                             x509.load_pem_x509_certificate(open(ca2, "rb").read()).serial_number)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_ca_signed_cert_verifies_like_an_installed_root(self):
+        # The real "no warning" guarantee: a client that trusts ONLY our CA (as a
+        # device does after installing the root) completes a verified handshake
+        # with hostname checking — no bypass, no warning.
+        import socket
+        import ssl
+        import threading
+        from trio_mix.tls import ensure_trusted_cert
+        d = tempfile.mkdtemp(prefix="autofoh_ca_")
+        try:
+            cert, key, ca = ensure_trusted_cert(d, ["127.0.0.1"])
+            sctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            sctx.load_cert_chain(cert, key)
+            srv = socket.socket()
+            srv.bind(("127.0.0.1", 0)); srv.listen(1)
+            port = srv.getsockname()[1]
+            errs = []
+
+            def _acc():
+                try:
+                    conn, _ = srv.accept()
+                    ss = sctx.wrap_socket(conn, server_side=True); ss.recv(4); ss.close()
+                except Exception as e:              # noqa: BLE001
+                    errs.append(e)
+
+            threading.Thread(target=_acc, daemon=True).start()
+            cctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            cctx.load_verify_locations(ca)          # trust ONLY our root
+            cctx.check_hostname = True
+            with socket.create_connection(("127.0.0.1", port), timeout=5) as s:
+                with cctx.wrap_socket(s, server_hostname="127.0.0.1") as ts:
+                    ts.send(b"ok")                  # verified handshake succeeded
+            self.assertEqual(errs, [])
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
     def test_generate_with_lan_ip_in_san(self):
         d = tempfile.mkdtemp(prefix="autofoh_cert_")
         try:

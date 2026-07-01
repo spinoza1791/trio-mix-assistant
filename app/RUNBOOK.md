@@ -253,6 +253,7 @@ not your firmware's exact formats — that's still §2.4.)
 | `--lan` | bind to the LAN so tablets can connect |
 | `--https` | serve TLS (self‑signed) for PWA install + Wake Lock |
 | `--pin "<code>"` | require this PIN to open the dashboard + control the console (recommended on untrusted networks; pair with `--https`). Omit for no auth on a trusted LAN |
+| `--trust` | serve a cert signed by a local root CA (implies `--https`). Install the printed root once per device → a fully‑trusted, **warning‑free** https connection |
 | `--host <ip>` / `--port <n>` | bind address / port (default 8770) |
 
 Default (no flags) = **simulation** on `http://127.0.0.1:8770/`.
@@ -275,7 +276,7 @@ The dashboard now names most of these in an **ALERT banner** — this table is t
 | **"meter port busy" / "Desk emulator could not bind…"** | Two copies running. Stop the other instance. |
 | **calibration "heard near‑silence — the test tone could not be played"** | No/locked **output** device for the pink noise — check the PA feed/output selection. |
 | **Tablet can't open the page** | Not launched with `--lan`; firewall blocking inbound; different Wi‑Fi/VLAN; AP "client isolation" on. Use the exact printed URL/QR. |
-| **HTTPS cert warning on tablet** | Expected (self‑signed) — tap **Advanced → proceed**, then Add to Home Screen. If the browser won't let you proceed at all, you're on an old build's 10‑year cert: delete the `app/.certs` folder and relaunch (it regenerates a short‑lived, acceptable cert automatically). On the tablet, open via the exact **IP** URL the app prints (not a hostname). |
+| **HTTPS cert warning on tablet** | Expected with self‑signed — tap **Advanced → proceed**, then Add to Home Screen. **To remove the warning entirely,** launch with `--trust`: it prints steps to install a local root CA once per device (`…/ca.pem`), after which https is fully trusted (no warning). If a browser won't let you proceed *and* you're not using `--trust`, you're on an old build's 10‑year cert — delete `app/.certs` and relaunch. Always open via the exact **IP** URL the app prints. |
 | **Fader jumps / wrong EQ band on the real desk** | OSC scaling mismatch for your firmware → `HARDWARE_BRINGUP.md` §1; fix the constant in `trio_mix/osc.py`. |
 | **Wrong meter moves when you play an input** | Channel‑map mismatch — the startup log shows `listening on '<device>'`; verify the patch order (§2.2) and the `channel_map`. |
 | **`python` not found** | Windows: `py run.py …`. macOS: `python3 run.py …`. |

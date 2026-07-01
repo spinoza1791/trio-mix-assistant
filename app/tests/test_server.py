@@ -241,9 +241,9 @@ class TestSecurityHardening(unittest.TestCase):
     """PIN auth + DNS-rebinding Host guard. Each test spins up its own server so
     the (per-process) auth/lockout state stays isolated."""
 
-    def _server(self, pin=None):
+    def _server(self, pin=None, ca_pem=None):
         eng = Engine(sim=True)
-        httpd = serve(eng, "127.0.0.1", 0, pin=pin)
+        httpd = serve(eng, "127.0.0.1", 0, pin=pin, ca_pem=ca_pem)
         port = httpd.server_address[1]
         threading.Thread(target=httpd.serve_forever, daemon=True).start()
         self.addCleanup(eng.stop)
@@ -326,6 +326,22 @@ class TestSecurityHardening(unittest.TestCase):
         for _ in range(5):
             self.assertEqual(self._req(base, "POST", "/api/login", {"pin": "x"})[0], 401)
         self.assertEqual(self._req(base, "POST", "/api/login", {"pin": "x"})[0], 429)
+
+    # -- trusted-CA install route -------------------------------------------
+    def test_ca_pem_route(self):
+        pem = "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----\n"
+        base = self._server(ca_pem=pem)
+        st, hdrs, body = self._req(base, "GET", "/ca.pem")
+        self.assertEqual(st, 200)
+        self.assertIn("BEGIN CERTIFICATE", body)
+        self.assertEqual(hdrs.get("Content-Type"), "application/x-x509-ca-cert")
+        # public asset: reachable even with a PIN set (you need it to establish trust)
+        base_pin = self._server(pin="1352", ca_pem=pem)
+        self.assertEqual(self._req(base_pin, "GET", "/ca.pem")[0], 200)
+
+    def test_ca_pem_absent_when_not_configured(self):
+        base = self._server()                          # no ca_pem
+        self.assertEqual(self._req(base, "GET", "/ca.pem")[0], 404)
 
 
 if __name__ == "__main__":
