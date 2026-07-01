@@ -340,7 +340,13 @@ def main() -> None:
         try:
             import ssl
             from trio_mix.tls import ensure_cert
-            hosts = ["localhost", "127.0.0.1"] + ([ip] if ip else [])
+            # Cover every interface the tablet might reach (multi-NIC / VPN), so
+            # the cert's SAN matches whichever LAN IP the URL uses — a SAN mismatch
+            # is another "can't proceed" cert error.
+            hosts, seen = [], set()
+            for h in ["localhost", "127.0.0.1"] + _all_lan_ips():
+                if h and h not in seen:
+                    seen.add(h); hosts.append(h)
             certdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".certs")
             certfile, keyfile = ensure_cert(certdir, hosts)
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)

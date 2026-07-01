@@ -275,7 +275,7 @@ The dashboard now names most of these in an **ALERT banner** — this table is t
 | **"meter port busy" / "Desk emulator could not bind…"** | Two copies running. Stop the other instance. |
 | **calibration "heard near‑silence — the test tone could not be played"** | No/locked **output** device for the pink noise — check the PA feed/output selection. |
 | **Tablet can't open the page** | Not launched with `--lan`; firewall blocking inbound; different Wi‑Fi/VLAN; AP "client isolation" on. Use the exact printed URL/QR. |
-| **HTTPS cert warning on tablet** | Expected (self‑signed) — accept once, then Add to Home Screen. |
+| **HTTPS cert warning on tablet** | Expected (self‑signed) — tap **Advanced → proceed**, then Add to Home Screen. If the browser won't let you proceed at all, you're on an old build's 10‑year cert: delete the `app/.certs` folder and relaunch (it regenerates a short‑lived, acceptable cert automatically). On the tablet, open via the exact **IP** URL the app prints (not a hostname). |
 | **Fader jumps / wrong EQ band on the real desk** | OSC scaling mismatch for your firmware → `HARDWARE_BRINGUP.md` §1; fix the constant in `trio_mix/osc.py`. |
 | **Wrong meter moves when you play an input** | Channel‑map mismatch — the startup log shows `listening on '<device>'`; verify the patch order (§2.2) and the `channel_map`. |
 | **`python` not found** | Windows: `py run.py …`. macOS: `python3 run.py …`. |
