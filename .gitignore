@@ -30,6 +30,14 @@ wheels/
 /mix-assistant-design.html
 /notes.md
 
+# --- Secrets / credentials (NEVER commit) ---
+spinoza1791-pat.md
+*-pat.md
+*.pat
+*.token
+.env
+.env.*
+
 # --- OS / editors ---
 .DS_Store
 Thumbs.db
