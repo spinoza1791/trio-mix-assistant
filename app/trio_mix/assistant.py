@@ -72,6 +72,16 @@ class MixAssistant:
         self.manual_hold_until = {ch: -1e9 for ch in chans}   # human override window
         self.balance_targets: dict[int, float] = {}      # ch -> target output dB
 
+        # phase / polarity job (auto-flip + coach)
+        self.polarity = {ch: False for ch in chans}      # believed phase-invert per ch
+        self.phase_ema: dict[tuple, float] = {}          # pair -> smoothed zero-lag corr
+        self.phase_lag_ema: dict[tuple, float] = {}      # pair -> smoothed lag (ms)
+        self.phase_streak: dict[tuple, int] = {}         # pair -> sustained-inverted count
+        self.phase_armed: dict[tuple, bool] = {}         # pair -> ok to auto-flip
+        self.phase_status: dict[tuple, dict] = {}        # pair -> telemetry snapshot
+        self.last_phase_act: dict[tuple, float] = {}     # pair -> last auto-flip time
+        self.last_phase_warn: dict[tuple, float] = {}    # pair -> last advisory time
+
         # calibration products
         self.set_calibration(calib)
         self.venue_watch_freqs: list = []      # venue-learned freqs (persist across recal)
@@ -407,6 +417,85 @@ class MixAssistant:
             self._emit("system",
                        f"stage volume up ~{lvl - self.stage_baseline:.0f} dB over baseline "
                        "— consider easing back", C.STAGE_MIC_CH)
+
+    # ======================================================================
+    # Phase / polarity — detect two channels of one source cancelling, and either
+    # AUTO-flip the console polarity (auto mode) or advise the flip (coach mode).
+    # Comb filtering (a time offset, not fixable by a flip) is advisory in both.
+    # ======================================================================
+    def _phase_warn(self, key: tuple, ch: int, msg: str, now: float) -> None:
+        if now - self.last_phase_warn.get(key, -1e9) > C.PHASE_WARN_INTERVAL:
+            self.last_phase_warn[key] = now
+            self._emit("phase", msg, ch)
+
+    def _clear_phase(self, key: tuple) -> None:
+        self.coach_recs.pop(("phase", key[0]), None)
+        self._coach_last_text.pop(("phase", key[0]), None)
+
+    def handle_phase(self, a: int, b: int, rel, now: float) -> None:
+        if not self.enabled.get("phase"):
+            return
+        key = (a, b)
+        al = C.PHASE_EMA
+        ce = self.phase_ema.get(key)
+        self.phase_ema[key] = rel.zero_corr if ce is None else (1 - al) * ce + al * rel.zero_corr
+        if abs(rel.best_corr) >= C.PHASE_CORR_MIN:        # only trust the lag when correlated
+            le = self.phase_lag_ema.get(key)
+            self.phase_lag_ema[key] = rel.lag_ms if le is None else (1 - al) * le + al * rel.lag_ms
+        corr = self.phase_ema[key]
+        lag = self.phase_lag_ema.get(key, 0.0)
+        ra, rb = C.CHANNELS.get(a, f"ch{a}"), C.CHANNELS.get(b, f"ch{b}")
+
+        inverted = corr < C.PHASE_INVERT_CORR
+        related = abs(corr) >= C.PHASE_CORR_MIN
+        comb = related and not inverted and abs(lag) > C.PHASE_COMB_LAG_MS
+        status = ("inverted" if inverted else "comb" if comb
+                  else "aligned" if related else "unrelated")
+
+        if inverted:
+            self.phase_streak[key] = self.phase_streak.get(key, 0) + 1
+        else:
+            self.phase_streak[key] = max(0, self.phase_streak.get(key, 0) - 1)
+            if status in ("aligned", "unrelated"):
+                self.phase_armed[key] = True              # re-arm once it looks OK again
+
+        self.phase_status[key] = {"a": a, "b": b, "corr": round(corr, 2),
+                                  "lag_ms": round(lag, 2), "status": status,
+                                  "inv_a": self.polarity.get(a, False),
+                                  "inv_b": self.polarity.get(b, False)}
+
+        if status == "inverted":
+            armed = self.phase_armed.get(key, True)
+            ready = (self.phase_streak[key] >= C.PHASE_SUSTAIN
+                     and now - self.last_phase_act.get(key, -1e9) > C.PHASE_ACT_COOLDOWN)
+            if self.coach_mode:
+                self._recommend("phase", a,
+                    f"{ra} & {rb} are OUT OF POLARITY (corr {corr:+.2f}) → invert phase "
+                    f"on {rb}.", persist=True, pair=[a, b], status="inverted",
+                    corr=round(corr, 2))
+            elif ready and armed:
+                newpol = not self.polarity.get(b, False)
+                self.con.set_polarity(b, newpol)          # AUTO flip on the console
+                self.polarity[b] = newpol
+                self.last_phase_act[key] = now
+                self.phase_armed[key] = False             # don't oscillate if it didn't help
+                self.phase_streak[key] = 0
+                self._emit("phase", f"{ra} & {rb} out of polarity → flipped phase on "
+                                    f"{rb} ({'inverted' if newpol else 'normal'})", b)
+                self._note_latency("phase")
+            elif ready and not armed:
+                self._phase_warn(key, a, f"{ra} & {rb} still out of polarity after a "
+                                 f"flip → check mic placement / the card tap point.", now)
+        elif status == "comb":
+            msg = (f"{ra} & {rb} arrive ~{abs(lag):.2f} ms apart (comb filtering) → "
+                   f"time-align them or move the mic.")
+            if self.coach_mode:
+                self._recommend("phase", a, msg, persist=True, pair=[a, b],
+                                status="comb", lag_ms=round(lag, 2))
+            else:
+                self._phase_warn(key, a, msg, now)
+        else:
+            self._clear_phase(key)
 
     # -- main dispatch ------------------------------------------------------
     @staticmethod

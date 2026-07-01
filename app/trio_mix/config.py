@@ -55,6 +55,8 @@ GUEST_CHANNELS = ()           # channels unmuted only on guest songs (template g
 STEREO_LINKS = ()             # channel pairs that move together, e.g. ((2, 3),) for harm L/R
 STAGE_MIC_CH = None           # optional 2nd ambient mic for stage-volume sensing (e.g. 9)
 STAGE_RISE_DB = 4.0           # stage-level rise (dB) over baseline that prompts an advisory
+PHASE_PAIRS = ()              # channel pairs carrying the SAME source (mic+DI, two mics
+                              # on one instrument) to check for polarity/comb, e.g. ((4,5),)
 
 # ---- FX buses (performer FX view: per-channel sends + a wet/return) --------
 # Maps an FX mixbus index -> name. The console-specific send/return OSC addresses
@@ -71,7 +73,7 @@ def apply_channel_map(spec: dict) -> None:
     construction/runtime, so mutating these globals in place propagates). Lets a
     13-input AutoFOH rig and the 8-ch trio be the same code, config-only."""
     global LEAD_VOCAL_CH, MEAS_MIC_CH, BALANCE_CHANNELS
-    global GUEST_CHANNELS, STEREO_LINKS, STAGE_MIC_CH
+    global GUEST_CHANNELS, STEREO_LINKS, STAGE_MIC_CH, PHASE_PAIRS
     # Build everything into locals first so a malformed spec raises BEFORE we touch
     # any global -> the active map is never left half-applied.
     new_chans = ({int(k): str(v) for k, v in spec["map"].items()}
@@ -87,6 +89,8 @@ def apply_channel_map(spec: dict) -> None:
                  if "guest" in spec else GUEST_CHANNELS)
     new_links = (tuple(tuple(int(x) for x in pair) for pair in (spec["stereo_links"] or ()))
                  if "stereo_links" in spec else STEREO_LINKS)
+    new_phase = (tuple(tuple(int(x) for x in pair) for pair in (spec["phase_pairs"] or ()))
+                 if "phase_pairs" in spec else PHASE_PAIRS)
     if "stage_mic" in spec:
         sm = spec["stage_mic"]
         new_stage = int(sm) if sm is not None else None
@@ -97,6 +101,7 @@ def apply_channel_map(spec: dict) -> None:
     ROLE_LABELS.clear(); ROLE_LABELS.update(new_labels)
     LEAD_VOCAL_CH, MEAS_MIC_CH, BALANCE_CHANNELS = new_lead, new_meas, new_bal
     GUEST_CHANNELS, STEREO_LINKS, STAGE_MIC_CH = new_guest, new_links, new_stage
+    PHASE_PAIRS = new_phase
 
 
 def auto_channel_map(n_inputs: int) -> dict:
@@ -109,7 +114,8 @@ def auto_channel_map(n_inputs: int) -> dict:
         m = {str(i): f"in_{i}" for i in range(1, n)}
         m[str(n)] = "meas_mic"
         spec = {"map": m, "meas_mic": n}
-    spec.update({"balance": [], "guest": [], "stereo_links": [], "stage_mic": None})
+    spec.update({"balance": [], "guest": [], "stereo_links": [], "stage_mic": None,
+                 "phase_pairs": []})
     apply_channel_map(spec)
     return spec
 
@@ -117,16 +123,16 @@ def auto_channel_map(n_inputs: int) -> dict:
 def channel_map_state() -> tuple:
     """Snapshot the channel-map globals (for test isolation / restore)."""
     return (dict(CHANNELS), dict(ROLE_LABELS), LEAD_VOCAL_CH, MEAS_MIC_CH,
-            BALANCE_CHANNELS, GUEST_CHANNELS, STEREO_LINKS, STAGE_MIC_CH)
+            BALANCE_CHANNELS, GUEST_CHANNELS, STEREO_LINKS, STAGE_MIC_CH, PHASE_PAIRS)
 
 
 def restore_channel_map_state(s: tuple) -> None:
     global LEAD_VOCAL_CH, MEAS_MIC_CH, BALANCE_CHANNELS
-    global GUEST_CHANNELS, STEREO_LINKS, STAGE_MIC_CH
+    global GUEST_CHANNELS, STEREO_LINKS, STAGE_MIC_CH, PHASE_PAIRS
     CHANNELS.clear(); CHANNELS.update(s[0])
     ROLE_LABELS.clear(); ROLE_LABELS.update(s[1])
     (LEAD_VOCAL_CH, MEAS_MIC_CH, BALANCE_CHANNELS,
-     GUEST_CHANNELS, STEREO_LINKS, STAGE_MIC_CH) = s[2:]
+     GUEST_CHANNELS, STEREO_LINKS, STAGE_MIC_CH, PHASE_PAIRS) = s[2:]
 
 # ---- Lead-vocal level ride ------------------------------------------------
 # Target *output* loudness for the lead vocal (dB). The ride holds output
@@ -170,14 +176,25 @@ CAL_PREDIP_DB = -3.0         # pre-emptive dip on top feedback-prone freqs
 CAL_N_PREDIP = 2             # how many feedback freqs to pre-dip
 CAL_NOISE_DBFS = -20.0       # playback level for the pink-noise test
 
+# ---- Phase / polarity job (auto-flip + coach) -----------------------------
+PHASE_CORR_MIN = 0.45        # |correlation| below this -> unrelated sources, ignore
+PHASE_INVERT_CORR = -0.35    # smoothed zero-lag corr below this -> polarity inverted
+PHASE_COMB_LAG_MS = 0.35     # arrival-time offset above this (correlated) -> comb filtering
+PHASE_MAX_LAG_MS = 3.0       # cross-correlation search window (+/- ms)
+PHASE_EMA = 1 / 16           # smoothing on corr/lag (anti-flap)
+PHASE_SUSTAIN = 8            # sustained inverted blocks before an auto-flip (~170 ms)
+PHASE_ACT_COOLDOWN = 5.0     # min seconds between auto-flips on a pair
+PHASE_WARN_INTERVAL = 20.0   # min seconds between repeated phase advisories per pair
+
 # ---- Coach (advisory) mode ------------------------------------------------
 COACH_TTL_S = 8.0            # a standing manual-move recommendation expires this
                             # long after it was last re-issued (problem cleared)
 
-# ---- Defaults for the four jobs (Phase 1: safety net only) ----------------
+# ---- Defaults for the jobs (Phase 1: safety net only) ---------------------
 DEFAULT_ENABLED = {
     "feedback": True,
     "clip": True,
     "vocal_ride": False,
     "balance": False,
+    "phase": False,          # polarity/comb check + auto-flip (needs PHASE_PAIRS)
 }

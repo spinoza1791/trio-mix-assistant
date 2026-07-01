@@ -216,6 +216,7 @@ This also lets you **validate the OSC** against Behringer's own software with no
 | **Clip protection** | reflex | Peak within ~1 dB of full scale → trim the preamp; creep it back once clean. |
 | **Vocal ride** | advisory | Hold the lead vocal's *output* at a target as the singer's input drifts (deadband + step‑limit + smooth ramp). |
 | **Balance hold** | advisory | Snapshot the bass/keys balance and hold it from wandering. |
+| **Phase / polarity** | advisory | Cross‑correlate paired mics (mic + DI, two mics on one source): out of polarity → **auto‑flip** the channel Φ (or advise it in coach mode); flag comb‑filtering time offsets. Opt‑in via *phase pairs*. |
 | **Pink‑noise calibration** | pre‑show | Measure the room, cut the worst peaks, pre‑dip feedback‑prone freqs, seed the watch‑list. |
 
 **Coach mode** turns this inside‑out: instead of acting, the app *advises*. One toggle suspends **every** automatic move — all the jobs above **plus** setlist scene recall and guest mutes — and surfaces the exact manual change to make (channel, band, dB, Hz, scene) in a Coach panel and the decision log. Same deterministic math, still zero AI, and the console is left untouched; only your own manual moves act. Use it to mix by hand with guidance, or to preview what the app would do before you trust a job.

@@ -153,6 +153,7 @@ over `wss://` automatically under https.
 | **Clip protection** | reflex | Peak within 1 dB of full scale → trim the preamp; creep it back once clean. |
 | **Vocal ride** | advisory | Hold the lead vocal's *output* at a target as the singer's input drifts (clamped P-leveler: deadband + step limit + smooth ramp). |
 | **Balance hold** | advisory | Snapshot the bass/keys balance and hold it from wandering. |
+| **Phase / polarity** | advisory | Cross-correlate paired mics (mic+DI, two mics on one source): out of polarity → auto-flip the channel Φ (or advise in coach mode); flag comb-filtering time offsets. Opt-in via `PHASE_PAIRS` / template `phase_pairs`. |
 | **Pink-noise calibration** | pre-show | Measure the room, cut the worst peaks, pre-dip feedback-prone freqs, build the baseline + watch-list. |
 | **Manual mixing surface** | performer | Draggable per-channel fader strips + master + one-tap mute, over WebSocket. A human move makes the auto-ride **yield** on that channel for a few seconds (shared-control). |
 | **Coach mode** | advisory | A header toggle that suspends **every** automatic console write — mix corrections *and* setlist automation (scene recall, guest mutes) — and instead lists the exact manual move (channel, band, dB, Hz, scene) in a panel + the log. Only your own manual moves act. **No LLM/AI** — the numbers are the same deterministic math. For mixing by hand with guidance, or previewing what the app would do. |

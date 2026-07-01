@@ -226,6 +226,14 @@ class ConsoleBase:
             self._send(f"/ch/{ch:02d}/mix/on", 0 if muted else 1)
         self._record("ch_mute", ch=ch, muted=muted)
 
+    def set_polarity(self, ch: int, inverted: bool) -> None:
+        """Set a channel's polarity/phase-invert (the Phi button). VERIFY: the
+        X32/M32 preamp-invert address + tap point (the card send must be taken
+        POST-invert for the phase job's closed loop; see HARDWARE_BRINGUP.md)."""
+        with self._lock:
+            self._send(f"/ch/{ch:02d}/preamp/invert", 1 if inverted else 0)
+        self._record("polarity", ch=ch, inverted=bool(inverted))
+
     def set_main_fader(self, db: float) -> float:
         db = _clamp(db, -90.0, 10.0)
         with self._lock:
@@ -292,6 +300,7 @@ class SimConsole(ConsoleBase):
         self.eq_bands: dict[int, dict[int, dict]] = {}   # ch -> band -> {hz,gain_db,q,on}
         self.sends: dict[tuple, float] = {}              # (ch,bus) -> level_db
         self.fx_returns: dict[int, float] = {}           # fx -> level_db
+        self.polarity: dict[int, bool] = {}              # ch -> phase-inverted?
 
     # record raw wire traffic (fidelity) ------------------------------------
     def _send(self, addr: str, *args) -> None:
@@ -319,6 +328,8 @@ class SimConsole(ConsoleBase):
             self.main_muted = s["muted"]
         elif kind == "scene":
             self.last_scene = s["index"]
+        elif kind == "polarity":
+            self.polarity[s["ch"]] = s["inverted"]
         elif kind == "eq_clear":
             self.notches[s["ch"]] = []
         elif kind == "ch_mute":

@@ -227,6 +227,13 @@ class Engine:
                                 feat.fb_freq, feat.harmonicity = self._meas_ring.update(samples)
                             self._feat[ch] = feat
                             self.assistant.on_features(ch, feat, now)
+                        # cross-channel phase/polarity check (needs both raw blocks)
+                        if self.assistant.enabled.get("phase"):
+                            for pa, pb in C.PHASE_PAIRS:
+                                sa, sb = frame.get(pa), frame.get(pb)
+                                if sa is not None and sb is not None:
+                                    self.assistant.handle_phase(
+                                        pa, pb, dsp.phase_relation(sa, sb), now)
                     self._note_perf(now, last_now)
                     self._rebuild_telemetry()
                 self._recover_audio(now)    # off-lock: re-open a dead device with backoff
@@ -974,6 +981,10 @@ class Engine:
             "enabled": dict(self.assistant.enabled),
             "coach": {"on": self.assistant.coach_mode,
                       "recs": self.assistant.coach_snapshot(now)},
+            "phase": {"enabled": self.assistant.enabled.get("phase", False),
+                      "pairs": list(self.assistant.phase_status.values()),
+                      "polarity": {c: self.assistant.polarity.get(c, False)
+                                   for c in C.CHANNELS}},
             "main_muted": getattr(self.con, "main_muted", False),
             "master": {"fader": round(self.master_db, 1)},
             "eq": {c: [{"band": b, "hz": round(bd["hz"]), "gain": round(bd["gain"], 1),

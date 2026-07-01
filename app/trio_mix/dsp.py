@@ -171,6 +171,58 @@ class RollingRingDetector:
 
 
 # ---------------------------------------------------------------------------
+# Phase / polarity relationship between two channels (comb-filter / phase cancel)
+# ---------------------------------------------------------------------------
+@dataclass
+class PhaseRelation:
+    """How two channels that (may) carry the same source relate in time/polarity.
+
+    zero_corr : normalised zero-lag correlation, in [-1, 1]. Its SIGN is polarity:
+                ~+1 in phase, ~-1 inverted (summing them cancels), ~0 unrelated.
+    best_corr : normalised correlation at the best lag (how correlated they are at
+                all, once any time offset is removed).
+    lag_ms    : the arrival-time offset of the best alignment; a non-zero lag with
+                high correlation is the signature of comb filtering.
+    """
+    zero_corr: float = 0.0
+    best_corr: float = 0.0
+    lag_samples: int = 0
+    lag_ms: float = 0.0
+
+
+def phase_relation(a: np.ndarray, b: np.ndarray, sr: int = C.SAMPLE_RATE,
+                   max_lag_ms: float | None = None) -> PhaseRelation:
+    """Cross-correlate two channel blocks to measure polarity + time offset.
+
+    Pure + deterministic. Returns zeros for silence or too-short input. The
+    zero-lag correlation's sign detects a polarity flip; the best-lag position
+    detects a comb-filtering time offset."""
+    a = np.asarray(a, dtype=np.float64)
+    b = np.asarray(b, dtype=np.float64)
+    n = int(min(a.size, b.size))
+    if n < 16:
+        return PhaseRelation()
+    a = a[:n] - a[:n].mean()
+    b = b[:n] - b[:n].mean()
+    na = float(np.sqrt(np.dot(a, a)))
+    nb = float(np.sqrt(np.dot(b, b)))
+    if na < 1e-9 or nb < 1e-9:                       # one side is silent
+        return PhaseRelation()
+    denom = na * nb
+    zero = float(np.dot(a, b)) / denom               # sign = polarity (convention-free)
+    max_lag = int((C.PHASE_MAX_LAG_MS if max_lag_ms is None else max_lag_ms)
+                  / 1000.0 * sr)
+    max_lag = max(1, min(max_lag, n - 1))
+    full = np.correlate(a, b, mode="full") / denom   # length 2n-1, centre = zero lag
+    centre = n - 1
+    window = full[centre - max_lag: centre + max_lag + 1]
+    k = int(np.argmax(np.abs(window)))
+    lag = k - max_lag                                # samples from zero lag
+    return PhaseRelation(zero_corr=zero, best_corr=float(window[k]),
+                         lag_samples=lag, lag_ms=lag / sr * 1000.0)
+
+
+# ---------------------------------------------------------------------------
 # Pink-noise + octave-band analysis (calibration front-end)
 # ---------------------------------------------------------------------------
 def generate_pink_noise(seconds: float, sr: int = C.SAMPLE_RATE,

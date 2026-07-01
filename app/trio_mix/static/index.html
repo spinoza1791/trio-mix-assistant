@@ -71,6 +71,7 @@
   .crec .ck{font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;flex:0 0 62px;color:#7fc4ff}
   .crec .cm{color:var(--ink)}
   .crec.feedback{border-left-color:var(--reflex)} .crec.clip{border-left-color:var(--console)}
+  .crec.phase{border-left-color:#c39bff}
   .logrow.coach{border-left-color:#5db4ff} .logrow.coach .k{color:#7fc4ff}
   .conn{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--mut)}
   .conn .d{width:8px;height:8px;border-radius:50%;background:var(--dim)}
@@ -403,6 +404,7 @@
   .logrow.balance{border-left-color:var(--human)} .logrow.balance .k{color:var(--human)}
   .logrow.calibration{border-left-color:var(--cal)} .logrow.calibration .k{color:var(--cal)}
   .logrow.panic{border-left-color:var(--danger)} .logrow.panic .k{color:#ffb3ba}
+  .logrow.phase{border-left-color:#c39bff} .logrow.phase .k{color:#c39bff}
   .logrow.system{border-left-color:var(--line2)}
   .log .empty{padding:14px;text-align:center}
 
@@ -591,6 +593,7 @@ const JOBS = [
   {key:"clip",       name:"Clip protection", tier:"reflex",   cls:"reflex", icon:"ic-clip",     desc:"Peak near full scale → trim the preamp a touch."},
   {key:"vocal_ride", name:"Vocal ride",      tier:"advisory", cls:"adv",    icon:"ic-vocal",    desc:"Hold the lead vocal at its loudness target."},
   {key:"balance",    name:"Balance hold",    tier:"advisory", cls:"adv",    icon:"ic-balance",  desc:"Keep bass/keys from wandering off a stored balance."},
+  {key:"phase",      name:"Phase / polarity",tier:"advisory", cls:"adv",    icon:"ic-balance",  desc:"Paired mics out of polarity → auto-flip (or advise); flag comb filtering. Needs phase pairs."},
 ];
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));

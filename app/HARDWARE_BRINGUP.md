@@ -49,6 +49,11 @@ move it on the console and confirm the value the app reports matches.
 - [ ] **Channel EQ notch**: a feedback notch lands on the right band, freq, Q, and gain.
 - [ ] **Main-bus PEQ**: room-correction cuts hit the main/stereo bus, not a channel.
 - [ ] **Mute** and **scene recall** (`/-action/goscene`) do what you expect.
+- [ ] **Polarity/phase invert** (`/ch/NN/preamp/invert`, for the *phase* job): flipping
+      it in the app toggles the channel Φ on the desk. **Also confirm the card/USB tap
+      point is POST-invert** — the phase job's auto-flip only closes the loop if the
+      signal the app captures reflects the polarity flip (else it correctly falls back
+      to advisory after one flip). If the address differs, fix it in `osc.py`.
 > If any mapping is off, fix the scaling in `trio_mix/osc.py` (or `config.py`) — the
 > code centralises every conversion so there's one place to correct per parameter.
 
