@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 import unittest
+import urllib.error
 import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -234,6 +235,97 @@ class TestServer(unittest.TestCase):
             self.assertIn("text/event-stream", r.headers.get("Content-Type", ""))
             chunk = r.read(64)                  # first bytes of the first frame
             self.assertTrue(chunk.startswith(b"data: "))
+
+
+class TestSecurityHardening(unittest.TestCase):
+    """PIN auth + DNS-rebinding Host guard. Each test spins up its own server so
+    the (per-process) auth/lockout state stays isolated."""
+
+    def _server(self, pin=None):
+        eng = Engine(sim=True)
+        httpd = serve(eng, "127.0.0.1", 0, pin=pin)
+        port = httpd.server_address[1]
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        self.addCleanup(eng.stop)
+        self.addCleanup(httpd.shutdown)
+        return f"http://127.0.0.1:{port}"
+
+    def _req(self, base, method, path, body=None, cookie=None, host=None):
+        data = json.dumps(body).encode() if body is not None else None
+        headers = {}
+        if data is not None:
+            headers["Content-Type"] = "application/json"
+        if cookie:
+            headers["Cookie"] = cookie
+        if host:
+            headers["Host"] = host
+        req = urllib.request.Request(base + path, data=data, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return r.status, r.headers, r.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers, e.read().decode("utf-8")
+
+    # -- DNS-rebinding Host guard (works with or without a PIN) --------------
+    def test_rebinding_host_rejected(self):
+        base = self._server()
+        st, _, _ = self._req(base, "GET", "/", host="evil.example.com")
+        self.assertEqual(st, 403)                       # a real hostname is refused
+        st_ip, _, _ = self._req(base, "GET", "/")       # default Host is the IP -> ok
+        self.assertEqual(st_ip, 200)
+        st_local, _, _ = self._req(base, "GET", "/", host="mixer.local")
+        self.assertEqual(st_local, 200)                 # mDNS name allowed
+
+    # -- PIN auth -----------------------------------------------------------
+    def test_no_pin_means_open(self):
+        base = self._server(pin=None)
+        st, _, _ = self._req(base, "GET", "/state")
+        self.assertEqual(st, 200)                       # backwards-compatible default
+
+    def test_unauthed_control_blocked_and_login_page_served(self):
+        base = self._server(pin="1352")
+        self.assertEqual(self._req(base, "GET", "/state")[0], 401)
+        self.assertEqual(self._req(base, "POST", "/api/command",
+                                   {"type": "panic", "on": True})[0], 401)
+        st, _, body = self._req(base, "GET", "/")       # root serves the login page
+        self.assertEqual(st, 200)
+        self.assertIn("access PIN", body)
+        self.assertNotIn("__INITIAL__", body)           # NOT the dashboard
+
+    def test_public_pwa_assets_need_no_pin(self):
+        base = self._server(pin="1352")
+        self.assertEqual(self._req(base, "GET", "/manifest.webmanifest")[0], 200)
+        self.assertEqual(self._req(base, "GET", "/icon.svg")[0], 200)
+
+    def test_wrong_pin_rejected(self):
+        base = self._server(pin="1352")
+        st, _, body = self._req(base, "POST", "/api/login", {"pin": "0000"})
+        self.assertEqual(st, 401)
+        self.assertFalse(json.loads(body)["ok"])
+
+    def test_correct_pin_unlocks_control(self):
+        base = self._server(pin="1352")
+        st, hdrs, body = self._req(base, "POST", "/api/login", {"pin": "1352"})
+        self.assertEqual(st, 200)
+        self.assertTrue(json.loads(body)["ok"])
+        setc = hdrs.get("Set-Cookie")
+        self.assertIn("mixauth=", setc)
+        self.assertIn("HttpOnly", setc)
+        self.assertIn("SameSite=Strict", setc)
+        cookie = setc.split(";", 1)[0]                  # "mixauth=<token>"
+        # now the control surface + telemetry are reachable with the cookie
+        self.assertEqual(self._req(base, "GET", "/state", cookie=cookie)[0], 200)
+        st_cmd, _, _ = self._req(base, "POST", "/api/command",
+                                 {"type": "mute", "ch": 3, "on": True}, cookie=cookie)
+        self.assertEqual(st_cmd, 200)
+        # a forged cookie is rejected (constant-time compare)
+        self.assertEqual(self._req(base, "GET", "/state", cookie="mixauth=nope")[0], 401)
+
+    def test_lockout_after_repeated_failures(self):
+        base = self._server(pin="1352")
+        for _ in range(5):
+            self.assertEqual(self._req(base, "POST", "/api/login", {"pin": "x"})[0], 401)
+        self.assertEqual(self._req(base, "POST", "/api/login", {"pin": "x"})[0], 429)
 
 
 if __name__ == "__main__":

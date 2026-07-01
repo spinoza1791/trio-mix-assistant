@@ -113,6 +113,10 @@ def main() -> None:
     ap.add_argument("--https", action="store_true",
                     help="serve over TLS (self-signed) so iPad/Android get "
                          "Wake Lock + a real PWA install")
+    ap.add_argument("--pin", default=None,
+                    help="require this access PIN to open the dashboard and control "
+                         "the console (recommended on untrusted networks; pair with "
+                         "--https). Omit for no auth on a trusted FOH LAN.")
     ap.add_argument("--template", default=None,
                     help="show-template JSON (songs -> scene + reference levels); "
                          "omit to use the built-in trio setlist")
@@ -323,7 +327,7 @@ def main() -> None:
         print(f"            it mirrors the app live; identity = {C.X32_MODEL}/{C.X32_FW}"
               + ("  [--trace-osc ON]" if args.trace_osc else ""))
     try:
-        httpd = serve(engine, args.host, args.port)   # bind first; don't start threads if it fails
+        httpd = serve(engine, args.host, args.port, pin=args.pin)   # bind first; don't start threads if it fails
     except OSError as exc:
         print(f"  [!] Could not open the dashboard on port {args.port}: {exc}")
         print(f"      Another copy already running? Try a different port:  --port {args.port + 1}")
@@ -351,6 +355,10 @@ def main() -> None:
     mode = ("EMULATED-HARDWARE" if args.emulate else
             "HARDWARE" if args.hardware else "SIMULATION")
     print(f"Trio Mix-Assistant [{mode}] -> {scheme}://{args.host}:{args.port}/")
+    if args.pin:
+        print("  PIN auth: ON — the dashboard asks for the PIN before it opens.")
+        if scheme != "https":
+            print("  [!] PIN over plain http is sniffable on the LAN — add --https.")
     if args.emulate:
         print("  Real OSC stack over localhost sockets against the desk emulator.")
         print("  NB: wire formats are assumptions — see HARDWARE_BRINGUP.md to validate.")

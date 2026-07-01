@@ -30,6 +30,10 @@ def ensure_cert(certdir: str, hosts: list[str]) -> tuple[str, str]:
         _generate_cryptography(certfile, keyfile, hosts)
     except ImportError:
         _generate_openssl(certfile, keyfile, hosts)
+    try:
+        os.chmod(keyfile, 0o600)          # private key: owner-only (best-effort on Windows)
+    except OSError:
+        pass
     return certfile, keyfile
 
 

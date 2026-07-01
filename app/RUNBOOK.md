@@ -252,6 +252,7 @@ not your firmware's exact formats — that's still §2.4.)
 | `--advisor-interval <s>` | seconds between advisor checks (default 30) |
 | `--lan` | bind to the LAN so tablets can connect |
 | `--https` | serve TLS (self‑signed) for PWA install + Wake Lock |
+| `--pin "<code>"` | require this PIN to open the dashboard + control the console (recommended on untrusted networks; pair with `--https`). Omit for no auth on a trusted LAN |
 | `--host <ip>` / `--port <n>` | bind address / port (default 8770) |
 
 Default (no flags) = **simulation** on `http://127.0.0.1:8770/`.

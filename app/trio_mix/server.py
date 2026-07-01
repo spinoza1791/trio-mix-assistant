@@ -7,8 +7,11 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
+import ipaddress
 import json
 import os
+import secrets
 import select
 import threading
 import time
@@ -161,8 +164,64 @@ def _read_index() -> str:
         return f.read()
 
 
-def make_handler(engine: Engine):
+def _host_allowed(host_header: str) -> bool:
+    """DNS-rebinding guard: legitimate access to this LAN tool is always by IP
+    literal, `localhost`, or an mDNS `*.local` name — never a public domain. A
+    real hostname in the Host header means a browser was pointed at an attacker
+    domain that rebound to our LAN IP, so reject it. Empty Host (odd client) is
+    tolerated; the app itself only ever advertises IP URLs."""
+    h = (host_header or "").strip()
+    if not h:
+        return True
+    if h.startswith("["):                        # [IPv6]:port
+        h = h[1:h.index("]")] if "]" in h else h[1:]
+    elif h.count(":") == 1:                       # host:port (a bare IPv6 has >1 colon)
+        h = h.rsplit(":", 1)[0]
+    hl = h.lower()
+    if hl == "localhost" or hl.endswith(".local"):
+        return True
+    try:
+        ipaddress.ip_address(h)
+        return True
+    except ValueError:
+        return False
+
+
+# Minimal PIN login page (served for GET / when a --pin is set and the client
+# isn't authenticated yet). Self-contained; posts the PIN and reloads on success.
+LOGIN_HTML = """<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Mix-Assistant — locked</title><style>
+:root{color-scheme:dark}*{box-sizing:border-box}
+body{margin:0;height:100vh;display:grid;place-items:center;background:#0a0e14;
+ color:#e6edf3;font:16px/1.4 -apple-system,Segoe UI,Roboto,sans-serif}
+.card{width:min(92vw,340px);padding:28px 26px;border:1px solid #1c2733;border-radius:16px;
+ background:#0e141c;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+h1{font-size:18px;margin:0 0 4px}p{color:#8aa0b2;font-size:13px;margin:0 0 18px}
+input{width:100%;padding:13px;font-size:20px;text-align:center;letter-spacing:.3em;
+ border:1px solid #26323f;border-radius:10px;background:#0a0f16;color:#e6edf3}
+button{width:100%;margin-top:12px;padding:12px;font-size:15px;font-weight:700;border:0;
+ border-radius:10px;cursor:pointer;color:#04121e;background:linear-gradient(180deg,#8fd0ff,#5db4ff)}
+.err{color:#ff9ba3;font-size:13px;min-height:18px;margin-top:10px}
+</style></head><body><form class="card" id="f">
+<h1>🎚️ Mix-Assistant</h1><p>Enter the access PIN to continue</p>
+<input id="pin" type="password" inputmode="numeric" autocomplete="one-time-code"
+ autofocus aria-label="PIN"><button>Unlock</button><div class="err" id="err"></div>
+</form><script>
+const f=document.getElementById("f"),pin=document.getElementById("pin"),err=document.getElementById("err");
+f.onsubmit=async e=>{e.preventDefault();err.textContent="";
+ let r;try{r=await fetch("/api/login",{method:"POST",headers:{"content-type":"application/json"},
+  body:JSON.stringify({pin:pin.value})});}catch(_){err.textContent="Network error.";return;}
+ if(r.ok){location.href="/";}else{err.textContent=r.status===429?"Too many tries — wait a moment.":"Wrong PIN.";pin.value="";pin.focus();}};
+</script></body></html>"""
+
+
+def make_handler(engine: Engine, pin: str | None = None):
     streams = threading.Semaphore(_MAX_STREAMS)   # cap long-lived SSE+WS threads
+    pin = str(pin) if pin not in (None, "") else None   # None -> auth disabled
+    token = secrets.token_urlsafe(32) if pin else None  # per-process session bearer
+    auth = {"fails": 0, "lock_until": 0.0}
+    auth_lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -212,10 +271,64 @@ def make_handler(engine: Engine):
             obj = _strict_loads(self.rfile.read(n).decode("utf-8") or "{}")
             return obj if isinstance(obj, dict) else {}
 
+        # -- auth / host ----------------------------------------------------
+        def _host_ok(self) -> bool:
+            return _host_allowed(self.headers.get("Host", ""))
+
+        def _authed(self) -> bool:
+            """True if auth is disabled (no PIN) or the request carries the valid
+            session cookie (constant-time compared)."""
+            if pin is None:
+                return True
+            for part in (self.headers.get("Cookie") or "").split(";"):
+                k, _, v = part.strip().partition("=")
+                if k == "mixauth":
+                    return hmac.compare_digest(v, token or "")
+            return False
+
+        def _secure(self) -> bool:
+            import ssl
+            return isinstance(self.connection, ssl.SSLSocket)
+
+        def _do_login(self):
+            now = time.monotonic()
+            with auth_lock:
+                if now < auth["lock_until"]:
+                    return self.send_error(429)      # locked out after repeated fails
+            try:
+                body = self._read_body()
+            except (ValueError, UnicodeDecodeError, RecursionError):
+                self.close_connection = True
+                return self.send_error(400)
+            ok = pin is not None and hmac.compare_digest(str(body.get("pin", "")), pin)
+            if not ok:
+                with auth_lock:
+                    auth["fails"] += 1
+                    if auth["fails"] >= 5:           # 5 tries -> 30 s cooldown
+                        auth["fails"], auth["lock_until"] = 0, now + 30.0
+                time.sleep(0.3)                      # blunt online brute force
+                return self._send_json({"ok": False}, code=401)
+            with auth_lock:
+                auth["fails"], auth["lock_until"] = 0, 0.0
+            out = json.dumps({"ok": True}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(out)))
+            cookie = f"mixauth={token}; HttpOnly; SameSite=Strict; Path=/"
+            if self._secure():
+                cookie += "; Secure"                 # only over TLS (else the browser drops it)
+            self.send_header("Set-Cookie", cookie)
+            self.end_headers()
+            self.wfile.write(out)
+
         # -- GET ------------------------------------------------------------
         def do_GET(self):
+            if not self._host_ok():
+                return self.send_error(403)
             path = self.path.split("?", 1)[0].split("#", 1)[0]   # ignore query/hash for routing
             if path == "/" or path.startswith("/index"):
+                if not self._authed():
+                    return self._send_text(LOGIN_HTML, "text/html; charset=utf-8")
                 html = _read_index().replace(
                     "__INITIAL_STATE__", _json_for_html(engine.snapshot()))
                 body = html.encode("utf-8")
@@ -225,10 +338,16 @@ def make_handler(engine: Engine):
                 self.end_headers()
                 self.wfile.write(body)
             elif path == "/state":
+                if not self._authed():
+                    return self.send_error(401)
                 self._send_json(engine.snapshot())
             elif path == "/events":
+                if not self._authed():
+                    return self.send_error(401)
                 self._serve_sse()
             elif path == "/ws":
+                if not self._authed():
+                    return self.send_error(401)
                 self._serve_ws()
             elif path == "/manifest.webmanifest":
                 self._send_text(_MANIFEST, "application/manifest+json")
@@ -324,6 +443,12 @@ def make_handler(engine: Engine):
 
         # -- POST -----------------------------------------------------------
         def do_POST(self):
+            if not self._host_ok():
+                return self.send_error(403)
+            if self.path == "/api/login":
+                return self._do_login()
+            if not self._authed():
+                return self.send_error(401)
             try:
                 body = self._read_body()
             except (ValueError, UnicodeDecodeError, RecursionError):
@@ -388,5 +513,6 @@ class _QuietServer(ThreadingHTTPServer):
         super().handle_error(request, client_address)
 
 
-def serve(engine: Engine, host: str = "127.0.0.1", port: int = 8770):
-    return _QuietServer((host, port), make_handler(engine))
+def serve(engine: Engine, host: str = "127.0.0.1", port: int = 8770,
+          pin: str | None = None):
+    return _QuietServer((host, port), make_handler(engine, pin))
