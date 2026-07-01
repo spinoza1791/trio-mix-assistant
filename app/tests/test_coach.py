@@ -71,6 +71,20 @@ class TestCoachClip(unittest.TestCase):
         self.assertEqual(rec["trim_db"], C.CLIP_TRIM_DB)
         self.assertIn("trim", rec["text"].lower())
 
+    def test_clip_recovery_advises_restore_not_actuate(self):
+        # A channel trimmed in auto, then switched to coach: when it's clean again
+        # the app must ADVISE restoring the preamp, never creep the gain itself.
+        con = SimConsole(); a = MixAssistant(con)
+        a.gain_db[3] = a.nominal_gain[3] - 4.0            # left trimmed from auto mode
+        a.last_clip_t[3] = -1e9                           # clip was long ago
+        a.set_coach_mode(True)
+        before = a.gain_db[3]
+        a.on_features(3, feat(peak=-30.0), now=1e6)       # clean, well past recover window
+        self.assertEqual(a.gain_db[3], before)            # preamp untouched
+        rec = a.coach_recs.get(("clip", 3))
+        self.assertIsNotNone(rec)
+        self.assertIn("restore", rec["text"].lower())
+
 
 class TestCoachRide(unittest.TestCase):
     def test_vocal_ride_advises_no_fader_change(self):
@@ -88,6 +102,43 @@ class TestCoachRide(unittest.TestCase):
         self.assertIsNotNone(rec)
         self.assertGreater(rec["delta_db"], 0)               # advises moving it UP
         self.assertIn("move the fader up", rec["text"])
+
+    def test_balance_advises_no_fader_change(self):
+        con = SimConsole(); a = MixAssistant(con)
+        a.set_coach_mode(True)
+        a.enabled["balance"] = True
+        bch = C.BALANCE_CHANNELS[0]
+        a.balance_targets = {bch: -10.0}                     # held output target
+        start = a.fader_db[bch]
+        now = 0.0
+        for _ in range(6):
+            a.on_features(bch, feat(rms=-28.0), now=now)     # 18 dB under target -> wants up
+            now += 1.1
+        self.assertEqual(a.fader_db[bch], start)             # fader untouched
+        rec = a.coach_recs.get(("balance", bch))
+        self.assertIsNotNone(rec)
+        self.assertIn("move the fader", rec["text"])
+
+
+class TestCoachScope(unittest.TestCase):
+    """Coach governs the assistant's automatic MIX corrections. The operator's
+    manual surface and the setlist show-automation are a different axis and must
+    keep working when coach is on."""
+
+    def test_manual_fader_still_actuates_under_coach(self):
+        e = Engine(sim=True)
+        e.set_coach_mode(True)
+        e.set_fader(1, -8.0)                                 # operator move via the surface
+        self.assertAlmostEqual(e.assistant.fader_db[1], -8.0, places=1)
+        self.assertEqual(e.assistant.coach_recs, {})         # a manual move isn't a coach rec
+
+    def test_scene_recall_still_actuates_under_coach(self):
+        # Show-sheet automation (scene recall) is not a coached mix move, so a
+        # manual/auto recall still fires in coach mode.
+        e = Engine(sim=True)
+        e.set_coach_mode(True)
+        e.recall_scene_manual(2)
+        self.assertEqual(getattr(e.con, "last_scene", None), 2)
 
 
 class TestCoachStateAndSnapshot(unittest.TestCase):

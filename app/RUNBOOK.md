@@ -192,8 +192,10 @@ Launched with `--lan` (and ideally `--https`):
   decision log (e.g. *"Feedback 2.5 kHz in the room → cut the MAIN BUS at 2500 Hz by −9 dB
   (Q 8)"*). **Calibration is coach-aware too:** with coach on, *Run calibration* still
   measures the room but *advises* the main-bus EQ (*"set MAIN-BUS PEQ: band 1 250 Hz
-  −6 dB…"*) as a standing recommendation instead of applying it. Zero console writes, no
-  AI — the numbers are the same deterministic math the automatic jobs would use. The
+  −6 dB…"*) as a standing recommendation instead of applying it. No AI — the numbers are
+  the same deterministic math the automatic jobs would use. Coach governs the assistant's
+  **mix corrections** only (feedback, clip, vocal ride, balance, calibration): it makes no
+  mix-correction writes; **your manual moves and setlist scene recall still work**. The
   status pill reads **COACH**. Use it to mix by hand with the app as a guide, or to see
   what it *would* do before trusting a job.
 - **TAKEOVER** = panic: mutes main, freezes all automatic jobs + scene recall +

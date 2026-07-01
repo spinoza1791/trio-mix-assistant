@@ -104,7 +104,8 @@ class MixAssistant:
             self.coach_recs.clear()
             self._coach_last_text.clear()
         self._emit("system",
-                   "coach mode ON — advising manual moves (console untouched)"
+                   "coach mode ON — advising manual moves; the assistant won't apply "
+                   "mix corrections (your manual moves + scene recall still work)"
                    if on else "coach mode off")
 
     def _recommend(self, kind: str, ch: int | None, text: str,
@@ -283,6 +284,15 @@ class MixAssistant:
               and self.gain_db[ch] < self.nominal_gain[ch]
               and now - self.last_clip_t[ch] > C.CLIP_RECOVER_S
               and now - self.last_recover_t[ch] > C.CLIP_RECOVER_S):
+            if self.coach_mode:
+                # a channel trimmed while in auto, then switched to coach: advise
+                # restoring the preamp by hand rather than creeping it (no writes).
+                self._recommend("clip", ch,
+                    f"{C.CHANNELS[ch]} is clean but its preamp is still trimmed "
+                    f"({self.gain_db[ch]:.0f} dB) → you can restore it toward "
+                    f"{self.nominal_gain[ch]:.0f} dB.",
+                    gain_db=round(self.gain_db[ch], 1), nominal_db=self.nominal_gain[ch])
+                return
             target = min(self.nominal_gain[ch],
                          self.gain_db[ch] + C.CLIP_RECOVER_DB)
             self.gain_db[ch] = self.con.nudge_gain_db(
