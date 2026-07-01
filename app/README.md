@@ -155,7 +155,7 @@ over `wss://` automatically under https.
 | **Balance hold** | advisory | Snapshot the bass/keys balance and hold it from wandering. |
 | **Pink-noise calibration** | pre-show | Measure the room, cut the worst peaks, pre-dip feedback-prone freqs, build the baseline + watch-list. |
 | **Manual mixing surface** | performer | Draggable per-channel fader strips + master + one-tap mute, over WebSocket. A human move makes the auto-ride **yield** on that channel for a few seconds (shared-control). |
-| **Coach mode** | advisory | A header toggle that flips every job from *acting* to *advising*: same detection, but instead of touching the console it lists the exact manual move (channel, band, dB, Hz) in a panel + the log. **No LLM/AI** — the numbers are the same deterministic math. For mixing by hand with guidance, or previewing what a job would do. |
+| **Coach mode** | advisory | A header toggle that suspends **every** automatic console write — mix corrections *and* setlist automation (scene recall, guest mutes) — and instead lists the exact manual move (channel, band, dB, Hz, scene) in a panel + the log. Only your own manual moves act. **No LLM/AI** — the numbers are the same deterministic math. For mixing by hand with guidance, or previewing what the app would do. |
 
 Everything passes through **guardrails** (hard fader/gain range, max step,
 smooth ramp), every move is **logged and reversible**, and a **TAKEOVER**

@@ -18,6 +18,8 @@ from trio_mix.calibration import Calibrator
 from trio_mix.dsp import ChannelFeatures
 from trio_mix.engine import Engine, sim_room_capture
 from trio_mix.osc import SimConsole
+from trio_mix.showclock import ShowState
+from unittest import mock
 
 
 def feat(rms=-30.0, peak=-20.0, fb=None, contrast=None):
@@ -132,13 +134,37 @@ class TestCoachScope(unittest.TestCase):
         self.assertAlmostEqual(e.assistant.fader_db[1], -8.0, places=1)
         self.assertEqual(e.assistant.coach_recs, {})         # a manual move isn't a coach rec
 
-    def test_scene_recall_still_actuates_under_coach(self):
-        # Show-sheet automation (scene recall) is not a coached mix move, so a
-        # manual/auto recall still fires in coach mode.
+    def test_manual_scene_recall_still_actuates_under_coach(self):
+        # An operator-tapped scene is a manual action, not automation -> it fires.
         e = Engine(sim=True)
         e.set_coach_mode(True)
         e.recall_scene_manual(2)
         self.assertEqual(getattr(e.con, "last_scene", None), 2)
+
+    def test_auto_scene_recall_is_advised_not_actuated_in_coach(self):
+        # Automatic (setlist-driven) scene recall IS suspended in coach: advised.
+        e = Engine(sim=True)
+        e.set_coach_mode(True)
+        e.on_song_change(ShowState(song_index=1, song_name="Bloom",
+                                   next_song="", section="Song", playing=True))
+        self.assertIsNone(e.con.last_scene)                  # NOT recalled on the desk
+        rec = e.assistant.coach_recs.get(("scene", None))
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec["scene"], 2)
+        self.assertIn("recall scene 2", rec["text"])
+        # a per-song target is not a console write -> it still updates
+        self.assertAlmostEqual(e.assistant.lead_target, -7.0)
+
+    def test_guest_mute_is_advised_not_actuated_in_coach(self):
+        e = Engine(sim=True)
+        e.set_coach_mode(True)
+        with mock.patch.object(C, "GUEST_CHANNELS", (6,)):
+            e.on_song_change(ShowState(song_index=1, song_name="Bloom",
+                                       next_song="", section="Song", playing=True))
+        self.assertNotIn(6, e.con.ch_muted)                  # console mute NOT written
+        rec = e.assistant.coach_recs.get(("guest", 6))
+        self.assertIsNotNone(rec)
+        self.assertIn(C.CHANNELS[6], rec["text"])
 
 
 class TestCoachStateAndSnapshot(unittest.TestCase):

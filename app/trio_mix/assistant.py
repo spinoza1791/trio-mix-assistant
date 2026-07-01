@@ -104,8 +104,9 @@ class MixAssistant:
             self.coach_recs.clear()
             self._coach_last_text.clear()
         self._emit("system",
-                   "coach mode ON — advising manual moves; the assistant won't apply "
-                   "mix corrections (your manual moves + scene recall still work)"
+                   "coach mode ON — the assistant advises every automatic move (mix "
+                   "corrections, scene recall, guest mutes) instead of applying it; "
+                   "only your own manual moves act"
                    if on else "coach mode off")
 
     def _recommend(self, kind: str, ch: int | None, text: str,

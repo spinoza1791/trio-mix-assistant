@@ -543,14 +543,20 @@ class Engine:
                                              f"(no template entry — leaving mix as-is)")
                 self._rebuild_telemetry()
                 return
+            coach = self.assistant.coach_mode
             if song.scene is not None and self.status != "takeover":
-                self._safe_recall(song.scene)
-            if song.lead_target is not None:
+                if coach:                        # coach: advise the recall, don't do it
+                    self.assistant._recommend("scene", None,
+                        f"Song '{song.name}' → recall scene {song.scene} on the console.",
+                        persist=True, scene=song.scene, song=song.name)
+                else:
+                    self._safe_recall(song.scene)
+            if song.lead_target is not None:     # a target, not a console write — always ok
                 self.assistant.lead_target = song.lead_target
             if song.balance:
                 self.assistant.balance_targets.update(dict(song.balance))
             now2 = time.monotonic()
-            for gch in C.GUEST_CHANNELS:          # unmute guest channels on guest songs
+            for gch in C.GUEST_CHANNELS:          # (un)mute guest channels per song
                 if gch not in C.CHANNELS or self.status == "takeover":
                     continue
                 want = not song.guest
@@ -558,8 +564,13 @@ class Engine:
                     continue
                 if now2 < self.assistant.manual_hold_until.get(gch, -1e9):
                     continue                                   # operator just set it — yield
-                self.con.set_channel_mute(gch, want)
-                self.muted[gch] = want
+                if coach:                        # coach: advise the mute change, don't do it
+                    self.assistant._recommend("guest", gch,
+                        f"{'Mute' if want else 'Unmute'} {C.CHANNELS[gch]} for "
+                        f"'{song.name}'.", persist=True, mute=want)
+                else:
+                    self.con.set_channel_mute(gch, want)
+                self.muted[gch] = want           # believed state (optimistic in coach)
             bits = []
             if song.scene is not None:
                 bits.append(f"scene {song.scene}")
