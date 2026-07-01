@@ -40,6 +40,12 @@ Small acoustic acts often play with **no one at front‑of‑house**. This app i
 
 </div>
 
+### 🎧 Coach mode — advise, don't act
+
+Flip **COACH** and the app stops touching the console: every move it *would* make — feedback notch, clip trim, vocal ride, room calibration, even scene recall — is listed as a plain manual instruction in a **Coach — manual moves** panel (and the decision log) for you to dial in by hand. Same deterministic math, zero AI; only your own moves act. **Tap the image for the full‑page view.**
+
+[![Coach mode — the assistant advises every manual move instead of applying it](docs/screenshots/coach.png)](docs/screenshots/coach-full.png)
+
 ## 🚀 Try it in 60 seconds
 
 No console, no mic, no audio interface — pure **simulation**. A closed‑loop "stage" drives the assistant so you can watch feedback get notched, a clip get trimmed, and the vocal ride compensate, live.
