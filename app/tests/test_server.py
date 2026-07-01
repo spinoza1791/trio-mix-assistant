@@ -140,6 +140,20 @@ class TestServer(unittest.TestCase):
         _, off = self._post("/api/command", {"type": "coach", "on": False})
         self.assertFalse(off["coach"]["on"])
 
+    def test_initial_state_cannot_break_out_of_script(self):
+        # A snapshot string (e.g. an AbleSet song name over unauthenticated LAN
+        # OSC) must not close the inline <script> that seeds window.__INITIAL__,
+        # or it becomes stored XSS on the control surface.
+        with self.engine._lock:
+            self.engine.show["current"] = "</script><xss-marker>"
+            self.engine._rebuild_telemetry()
+        status, html = self._get("/")
+        self.assertEqual(status, 200)
+        self.assertNotIn("<xss-marker>", html)             # raw breakout absent
+        self.assertNotIn("</script><xss-marker>", html)
+        # the payload survives, but neutralised as \u00xx escapes
+        self.assertIn("\\u003c/script\\u003e\\u003cxss-marker\\u003e", html)
+
     def test_websocket_telemetry_and_control(self):
         s = _ws_connect(self.port)
         try:

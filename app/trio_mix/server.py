@@ -37,6 +37,21 @@ def _strict_loads(s: str):
     return json.loads(s, parse_constant=_reject_const)
 
 
+def _json_for_html(obj) -> str:
+    """json.dumps safe to inline inside an HTML <script> element.
+
+    json.dumps does NOT escape '<', '>' or '&', so a snapshot string that
+    contains '</script>' (e.g. an AbleSet song name arriving over unauthenticated
+    LAN OSC) would close the inline <script> that seeds window.__INITIAL__ and let
+    the rest run as HTML — a stored XSS on the control surface. Escaping these to
+    their \\u00xx forms (plus the JS line separators U+2028/U+2029) neutralises the
+    breakout; the result is still valid JSON/JS — the escapes decode to the same
+    characters when the browser parses the object literal."""
+    return (json.dumps(obj)
+            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+
 # ---------------------------------------------------------------------------
 # Minimal RFC-6455 WebSocket (stdlib only) — bidirectional control surface
 # ---------------------------------------------------------------------------
@@ -202,7 +217,7 @@ def make_handler(engine: Engine):
             path = self.path.split("?", 1)[0].split("#", 1)[0]   # ignore query/hash for routing
             if path == "/" or path.startswith("/index"):
                 html = _read_index().replace(
-                    "__INITIAL_STATE__", json.dumps(engine.snapshot()))
+                    "__INITIAL_STATE__", _json_for_html(engine.snapshot()))
                 body = html.encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
